@@ -1,0 +1,23 @@
+# 智能体配置 - 指明所有需要扫描的技能目录
+#
+# 推荐使用方式：
+#   1. 在项目的 data/skills/{openclaw_skills,hermes_skills,codex_skills}/ 目录下
+#      放置从各平台下载的技能（可以是 .zip，也可以是解压后的目录）
+#   2. 运行 `python main.py`，智能体自动解压 zip、扫描 SKILL.md，并建立索引
+
+skill_roots:
+  # ============ 本地 data 目录 ============
+  - name: "data-openclaw"
+    path: "./data/skills/openclaw_skills"
+    format: "openclaw"
+
+# 工作流目录（每个子目录包含一个 workflow.yaml）
+workflow_roots:
+  - name: "local-workflows"
+    path: "./data/workflows"
+
+# 对话历史长度（保留最新 N 轮）
+history_limit: 20
+
+# 匹配技能的最低相关度（0-1）
+min_relevance: 0.15

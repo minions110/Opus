@@ -1,0 +1,31 @@
+﻿name: "demo"
+description: |
+  本工作流演示本引擎原生支持的所有 action: ask, list, show, reload, log
+inputs:
+  - name: query
+    type: string
+    default: "构建前端 web 应用"
+    description: 用来做技能匹配的查询词
+
+steps:
+  - id: list_skills
+    action: list
+    source: ""
+
+  - id: ask_step
+    action: ask
+    query: "{{inputs.query}}"
+    depends_on:
+      - list_skills
+
+  - id: show_best
+    action: show
+    skill: search
+    depends_on:
+      - ask_step
+
+  - id: final_log
+    action: log
+    text: "工作流完成。"
+    depends_on:
+      - show_best

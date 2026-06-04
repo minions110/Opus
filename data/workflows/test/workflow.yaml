@@ -1,0 +1,194 @@
+# ============================================
+# 工作流定义文件
+# 版本: 1.0.0
+# 用途: 定义可被代码执行、被大模型理解的任务流程
+# ============================================
+
+# 工作流元信息
+name: "文本分析与摘要工作流"
+version: "1.0.0"
+description: |
+  接收用户输入的文本，依次执行：
+  1. 情感分析
+  2. 关键词提取  
+  3. 生成摘要
+  4. 输出结构化结果
+
+# 输入参数定义
+inputs:
+  - name: "source_text"
+    type: "string"
+    required: true
+    description: "需要分析的原始文本内容"
+    example: "这个产品非常好用，但是价格有点贵，总体来说值得推荐。"
+  
+  - name: "max_length"
+    type: "integer"
+    required: false
+    default: 100
+    description: "摘要的最大长度（字符数）"
+  
+  - name: "language"
+    type: "string"
+    required: false
+    default: "zh"
+    enum: ["zh", "en"]
+    description: "文本语言，zh=中文，en=英文"
+
+# 输出参数定义
+outputs:
+  - name: "sentiment"
+    type: "object"
+    description: "情感分析结果"
+    schema:
+      polarity: "string"  # positive/negative/neutral
+      confidence: "float"  # 0-1之间
+      score: "float"       # -1到1之间
+  
+  - name: "keywords"
+    type: "array"
+    description: "提取的关键词列表"
+    items:
+      type: "string"
+    example: ["产品质量", "价格", "推荐"]
+  
+  - name: "summary"
+    type: "string"
+    description: "文本摘要"
+  
+  - name: "processing_time"
+    type: "float"
+    description: "总处理耗时（秒）"
+
+# 工作流步骤定义
+steps:
+  # 步骤1：情感分析
+  - id: "sentiment_analysis"
+    name: "情感分析"
+    description: "分析文本的情感倾向"
+    skill: "text_sentiment"  # 调用的skill名称
+    model: "gpt-4"           # 可选：指定大模型
+    inputs:
+      text: "{{inputs.source_text}}"
+      language: "{{inputs.language}}"
+    outputs:
+      sentiment_result: "result"
+    on_error: "continue"  # 失败时继续执行，记录错误
+  
+  # 步骤2：关键词提取
+  - id: "keyword_extraction"
+    name: "关键词提取"
+    skill: "text_keywords"
+    inputs:
+      text: "{{inputs.source_text}}"
+      top_k: 5
+    outputs:
+      keywords_list: "keywords"
+    depends_on: []  # 依赖的步骤ID，空表示无依赖
+  
+  # 步骤3：生成摘要
+  - id: "summary_generation"
+    name: "生成摘要"
+    skill: "text_summarize"
+    model: "claude-3"
+    inputs:
+      text: "{{inputs.source_text}}"
+      max_length: "{{inputs.max_length}}"
+      language: "{{inputs.language}}"
+    outputs:
+      summary_text: "summary"
+    depends_on: []
+  
+  # 步骤4：整合结果
+  - id: "result_aggregation"
+    name: "结果整合"
+    skill: "data_aggregator"
+    inputs:
+      sentiment: "{{steps.sentiment_analysis.sentiment_result}}"
+      keywords: "{{steps.keyword_extraction.keywords_list}}"
+      summary: "{{steps.summary_generation.summary_text}}"
+    outputs:
+      final_result: "aggregated_data"
+    depends_on:
+      - "sentiment_analysis"
+      - "keyword_extraction"
+      - "summary_generation"
+
+# 条件分支示例（可选）
+conditions:
+  - name: "紧急程度判断"
+    condition: "{{inputs.source_text|length}} > 1000"
+    then:
+      - "summary_generation"  # 长文本需要更多token
+      - use_model: "gpt-4-turbo"
+    else:
+      - use_model: "gpt-3.5-turbo"
+
+# 全局配置
+settings:
+  timeout: 30  # 单步超时时间（秒）
+  retry_count: 2  # 失败重试次数
+  parallel_execution: true  # 允许并行执行无依赖的步骤
+  log_level: "INFO"  # DEBUG/INFO/WARNING/ERROR
+  
+# 大模型配置
+models:
+  - name: "gpt-4"
+    provider: "openai"
+    api_key_env: "OPENAI_API_KEY"
+    parameters:
+      temperature: 0.7
+      max_tokens: 2000
+  
+  - name: "claude-3"
+    provider: "anthropic"
+    api_key_env: "ANTHROPIC_API_KEY"
+    parameters:
+      temperature: 0.5
+      max_tokens: 1500
+
+# 技能定义（调用大模型的具体能力）
+skills:
+  - name: "text_sentiment"
+    description: "分析文本情感"
+    prompt_template: |
+      请分析以下文本的情感倾向：
+      文本：{{text}}
+      语言：{{language}}
+      
+      请以JSON格式返回：
+      {
+        "polarity": "positive/negative/neutral",
+        "confidence": 0.95,
+        "score": 0.8
+      }
+  
+  - name: "text_keywords"
+    description: "提取文本关键词"
+    prompt_template: |
+      从以下文本中提取最重要的{{top_k}}个关键词：
+      文本：{{text}}
+      
+      返回格式：["关键词1", "关键词2", ...]
+  
+  - name: "text_summarize"
+    description: "生成文本摘要"
+    prompt_template: |
+      请用{{max_length}}字以内总结以下文本：
+      {{text}}
+      
+      要求：保留核心信息，语言流畅。
+
+# 执行示例（供测试用）
+example:
+  inputs:
+    source_text: "这个产品非常好用，但是价格有点贵，总体来说值得推荐。"
+    max_length: 50
+    language: "zh"
+  expected_outputs:
+    sentiment:
+      polarity: "positive"
+      confidence: 0.92
+      score: 0.6
+    keywords: ["产品", "好用", "价格", "推荐"]
+    summary: "产品好用但价格偏高，总体值得推荐。"
