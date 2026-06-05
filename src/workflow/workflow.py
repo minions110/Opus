@@ -15,7 +15,7 @@ workflow.yaml 的顶层字段 (最小可用定义):
       - name: "result"
     steps:       # 必需
       - id: "step1"
-        action: "ask"               # 必需: ask | list | show | run | ref | reload | workflow | log
+        action: "ask"               # 必需: ask | list | show | run | ref | reload | workflow | log | llm
         query: "你的问题"           # ask 专用
         skill: "skill-name"         # show/run/ref 专用
         args: "..."                 # run 专用 (字符串)
@@ -23,6 +23,12 @@ workflow.yaml 的顶层字段 (最小可用定义):
         source: "openclaw"          # list 专用 (可选)
         workflow: "another-wf"      # 嵌套调用另一个工作流
         text: "任意文本"            # log 专用
+        # LLM 专用字段
+        prompt: "提示词"            # llm 专用: 生成文本的提示词
+        provider: "openai"          # llm 专用: LLM 提供商 (可选)
+        model: "gpt-4o"            # llm 专用: 模型名称 (可选)
+        max_tokens: 4096           # llm 专用: 最大生成长度 (可选)
+        temperature: 0.7           # llm 专用: 温度参数 (可选)
         depends_on: ["step1"]       # 可选: 依赖的步骤 id
         on_error: "continue"        # 可选: fail | continue
         if: "表达式"                # 可选: 基于 inputs 的条件 (支持 `{{inputs.x}} == "值"` 等)
@@ -492,6 +498,37 @@ class WorkflowExecutor:
             logger.info("[workflow:%s] %s", step.id, text)
             return StepResult(step.id, action, True, output=str(text))
 
+        if action == "llm":
+            prompt = rendered_raw.get("prompt") or rendered_raw.get("text") or rendered_raw.get("query") or ""
+            if not prompt:
+                return StepResult(step.id, action, False, error="llm 步骤缺少 'prompt'")
+            
+            provider = rendered_raw.get("provider")
+            model = rendered_raw.get("model")
+            max_tokens = rendered_raw.get("max_tokens")
+            temperature = rendered_raw.get("temperature")
+            
+            kwargs = {}
+            if model:
+                kwargs["model"] = model
+            if max_tokens:
+                kwargs["max_tokens"] = int(max_tokens)
+            if temperature:
+                kwargs["temperature"] = float(temperature)
+            
+            try:
+                response = self.agent.llm_generate(prompt, provider=provider, **kwargs)
+                if response.ok:
+                    return StepResult(step.id, action, True, 
+                                      output={"content": response.content, 
+                                              "model": response.model,
+                                              "tokens": response.total_tokens})
+                else:
+                    return StepResult(step.id, action, False, error=response.error)
+            except Exception as e:
+                logger.error(f"LLM step error: {e}")
+                return StepResult(step.id, action, False, error=str(e))
+
         # 未知动作 —— 作为 on_error=continue 处理
         return StepResult(step.id, action, False,
-                          error=f"未知 action: {action} (支持: ask/list/show/run/ref/reload/workflow/log)")
+                          error=f"未知 action: {action} (支持: ask/list/show/run/ref/reload/workflow/log/llm)")

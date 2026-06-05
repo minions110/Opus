@@ -8,10 +8,13 @@
 - 🔎 **本地 TF-IDF 匹配**：无需远程 LLM，零 API Key，完全本地化运行
 - 🖥️ **交互式 CLI**：支持 `/list`、`/show`、`/run`、`/ref`、`/reload` 等命令
 - 🌐 **HTTP API 服务**：提供 RESTful API，便于集成到其他系统
-- 📋 **工作流引擎**：支持 YAML 定义的自动化工作流
+- 📋 **工作流引擎**：支持 YAML 定义的自动化工作流（含 LLM 步骤）
 - 📦 **自动解压**：支持 `.zip` 技能包自动解压和增量更新
 - ⚙️ **YAML 配置**：灵活的技能源和工作流配置
 - 🔄 **多模式切换**：对话模式、工作流模式、API 模式
+- 🪟 **跨平台支持**：Windows PowerShell 模拟执行 Shell 脚本
+- 🤖 **多模型支持**：OpenAI、Anthropic、DeepSeek、豆包、本地模型等
+- 🔑 **统一密钥管理**：所有 API Key 集中存储在 `data/Opus.json`
 
 ## 🏢 OPC 公司专属
 
@@ -30,29 +33,51 @@ Opus/
 ├── main.py                    # 开发验证入口（万能接口）
 ├── config.yaml                # 技能源与工作流配置
 ├── requirements.txt           # Python 依赖
+├── README.md                  # 项目说明文档
+├── 开发OPC项目智能体.md        # 开发文档
 ├── application/               # 部署入口
 │   ├── cli/main.py            # 生产环境 CLI
 │   ├── api/api_server.py      # 生产环境 HTTP API 服务
 │   └── web/index.html         # Web 前端页面
 ├── src/                       # 核心源码
 │   ├── agent/
-│   │   ├── agent.py           # 智能体核心（对话管理、命令处理）
-│   │   └── executor.py        # 脚本执行与资源读取
-│   ├── skill_scripts/
+│   │   ├── __init__.py
+│   │   ├── agent.py           # 智能体核心（对话管理、命令处理、LLM集成）
+│   │   └── executor.py        # 脚本执行与资源读取（含 PowerShell 模拟）
+│   ├── skill/
+│   │   ├── __init__.py
 │   │   ├── models.py          # Skill 数据模型
-│   │   ├── loader.py          # 技能发现与 SKILL.md 解析
-│   │   └── matcher.py         # TF-IDF 意图匹配器
-│   ├── workflow_scripts/
-│   │   └── workflow.py        # 工作流加载与执行引擎
-│   ├── config.py              # 配置管理模块
-│   └── ui/
-│       └── cli.py             # 命令行界面
+│   │   └── skill.py           # 技能加载、匹配与执行
+│   ├── workflow/
+│   │   ├── __init__.py
+│   │   └── workflow.py        # 工作流加载与执行引擎（支持 LLM 步骤）
+│   ├── llm/
+│   │   ├── __init__.py
+│   │   ├── base.py            # LLM 抽象基类和数据结构
+│   │   ├── manager.py         # 模型管理器（多提供商支持、故障转移）
+│   │   ├── session.py         # 会话管理器（对话历史管理）
+│   │   └── adapters/          # 各模型提供商适配器
+│   │       ├── __init__.py
+│   │       ├── openai.py      # OpenAI/Azure/DeepSeek/豆包适配器
+│   │       ├── anthropic.py   # Anthropic Claude 适配器
+│   │       ├── gemini.py      # Google Gemini 适配器
+│   │       └── local.py       # 本地模型适配器（Ollama/VLLM）
+│   ├── ui/
+│   │   ├── __init__.py
+│   │   └── cli.py             # 命令行界面
+│   ├── __init__.py
+│   └── config.py              # 配置管理模块（从 Opus.json 加载）
 └── data/                      # 数据目录
-    ├── Opus.json              # API Key 配置文件
+    ├── Opus.json              # API Key 配置文件（技能密钥、LLM 密钥）
     ├── skills/                # 技能包存放目录
     │   └── openclaw_skills/   # OpenClaw 技能（支持 zip 自动解压）
+    │       ├── __unpacked__/   # 自动解压目录
+    │       ├── search-2-0.1.0.zip
+    │       └── bocha-web-search-1.0.2.zip
     └── workflows/             # 工作流定义目录
-        └── demo/workflow.yaml # 示例工作流
+        ├── demo/workflow.yaml
+        ├── test/workflow.yaml
+        └── test1/workflow.yaml
 ```
 
 ## 🚀 快速开始
@@ -63,7 +88,30 @@ Opus/
 pip install -r requirements.txt
 ```
 
-### 2. 启动方式
+### 2. 配置 API Key
+
+编辑 `data/Opus.json`，配置所需的 API Key：
+
+```json
+{
+  "api_keys": {
+    "skills": {
+      "tavily": {
+        "name": "Tavily Search API",
+        "api_key": "your-key",
+        "enabled": true
+      },
+      "bocha": {
+        "name": "Bocha Web Search API",
+        "api_key": "your-key",
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+### 3. 启动方式
 
 #### 开发阶段（使用万能接口）
 
@@ -75,10 +123,16 @@ python main.py
 python main.py -q "帮我构建一个 web 应用"
 
 # 列出所有技能
-python main.py --list
+python main.py --list skills
 
-# 运行指定技能
-python main.py --run search
+# 列出所有工作流
+python main.py --list workflows
+
+# 运行指定技能（关键字参数方式）
+python main.py -e search -k query="AI news" -k max_results=5
+
+# 运行技能（位置参数方式）
+python main.py -e search -a '{"query": "AI news"}'
 
 # 启动 API 服务（端口 8765）
 python main.py --api
@@ -122,28 +176,44 @@ python application/api/api_server.py --host 0.0.0.0 --port 8080
 ### CLI 命令行参数
 
 ```bash
-# 一次性查询
-python application/cli/main.py -q "构建 web 应用"
+# 快速操作
+python main.py -q "构建 web 应用"     # 意图匹配查询
+python main.py --list skills         # 列出技能
+python main.py --list workflows      # 列出工作流
 
-# 列出技能（按来源过滤）
-python application/cli/main.py --list openclaw
+# 技能执行
+python main.py -e search                      # 执行技能
+python main.py -e search -k query="AI news"   # 带关键字参数
+python main.py -e search -a '{"query": "AI"}' # 带位置参数(JSON)
+python main.py -e search -s script.sh        # 指定脚本名
 
-# 查看技能详情
-python application/cli/main.py --show web-dev
+# 工作流
+python main.py --workflow demo                # 执行工作流
+python main.py --workflow demo --inputs '{"query":"测试"}'
 
-# 运行技能脚本（带参数）
-python application/cli/main.py --run search --args "python async"
+# API 服务
+python main.py --api --host 0.0.0.0 --port 8765
 
-# 读取参考文档
-python application/cli/main.py --ref skill-name --file README.md
-
-# 执行工作流
-python application/cli/main.py --workflow demo
-python application/cli/main.py --workflow demo --inputs '{"query":"测试"}'
-
-# JSON 输出格式
-python application/cli/main.py --list --json
+# 显示信息
+python main.py --info    # 项目信息
+python main.py --help    # 帮助信息
 ```
+
+### 参数说明
+
+| 参数 | 说明 | 示例 |
+|------|------|------|
+| `-q/--query TEXT` | 意图匹配查询 | `-q "搜索 AI 新闻"` |
+| `-l/--list [TYPE]` | 列出资源：skills/workflows | `--list skills` |
+| `-e/--execute SKILL` | 执行指定技能 | `-e search` |
+| `-s/--script SCRIPT` | 指定脚本名 | `-s search.sh` |
+| `-a/--arg VAL` | 添加位置参数（可多次） | `-a "arg1" -a "arg2"` |
+| `-k/--kwarg KEY=VAL` | 添加关键字参数（可多次） | `-k query=test` |
+| `-w/--workflow NAME` | 执行工作流 | `-w demo` |
+| `--inputs JSON` | 工作流输入参数 | `--inputs '{"query":"test"}'` |
+| `--api` | 启动 API 服务 | `--api` |
+| `--host HOST` | API 监听地址 | `--host 0.0.0.0` |
+| `--port PORT` | API 监听端口 | `--port 8080` |
 
 ### API 接口
 
@@ -177,7 +247,7 @@ curl -X POST http://localhost:8765/api/ask \
 # 运行技能
 curl -X POST http://localhost:8765/api/run \
   -H "Content-Type: application/json" \
-  -d '{"skill": "search", "args": "test"}'
+  -d '{"skill": "search", "args": [{"query": "AI news"}]}'
 
 # 运行工作流
 curl -X POST http://localhost:8765/api/workflows/run \
@@ -236,28 +306,83 @@ min_relevance: 0.15
 
 ### API Key 配置
 
-编辑 `data/Opus.json`：
+编辑 `data/Opus.json`，集中管理所有 API Key：
 
 ```json
 {
+  "version": "1.0",
+  "name": "Opus",
   "api_keys": {
     "skills": {
       "tavily": {
         "name": "Tavily Search API",
         "api_key": "your-api-key",
-        "enabled": true
+        "enabled": true,
+        "endpoint": "https://api.tavily.com/search"
+      },
+      "bocha": {
+        "name": "Bocha Web Search API",
+        "api_key": "your-api-key",
+        "enabled": true,
+        "endpoint": "https://api.bocha.cn/v1/web-search"
       }
     },
     "llm": {
       "openai": {
         "name": "OpenAI API",
         "api_key": "your-api-key",
-        "enabled": true
+        "enabled": false,
+        "endpoint": "https://api.openai.com/v1",
+        "models": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+        "default_model": "gpt-4o"
+      },
+      "deepseek": {
+        "name": "DeepSeek API",
+        "api_key": "your-api-key",
+        "enabled": true,
+        "endpoint": "https://api.deepseek.com/v1",
+        "models": ["deepseek-v4-flash", "deepseek-v4-pro"],
+        "default_model": "deepseek-v4-flash"
+      },
+      "doubao": {
+        "name": "豆包 API",
+        "api_key": "your-api-key",
+        "enabled": false,
+        "endpoint": "https://api.doubao.com/v1",
+        "models": ["Doubao-3.5", "Doubao-4"],
+        "default_model": "Doubao-3.5"
+      },
+      "local": {
+        "name": "本地模型",
+        "api_key": "",
+        "enabled": false,
+        "endpoint": "http://localhost:8080/v1",
+        "models": ["qwen2-7b-chat", "llama3"],
+        "default_model": "qwen2-7b-chat"
       }
     }
+  },
+  "settings": {
+    "default_llm": "deepseek",
+    "default_search": "bocha",
+    "auto_reload": true,
+    "log_level": "INFO",
+    "mode": "conversation"
   }
 }
 ```
+
+### LLM 支持的提供商
+
+| 提供商 | 模型示例 | 说明 |
+|--------|----------|------|
+| `openai` | gpt-4o, gpt-4-turbo | OpenAI 官方 API |
+| `anthropic` | claude-3-opus, claude-3-sonnet | Anthropic Claude |
+| `deepseek` | deepseek-v4-flash, deepseek-v4-pro | DeepSeek |
+| `doubao` | Doubao-3.5, Doubao-4 | 字节跳动豆包 |
+| `google` | gemini-pro | Google Gemini |
+| `azure` | - | Azure OpenAI |
+| `local` | qwen2-7b-chat, llama3 | 本地模型（Ollama/VLLM） |
 
 ## 📦 技能格式
 
@@ -269,9 +394,15 @@ min_relevance: 0.15
 ---
 name: my-custom-skill
 description: Describe what this skill does (用于意图匹配的主要依据)
+license: MIT-0
+homepage: https://example.com
 metadata:
-  author: your-name
-  version: 1.0.0
+  openclaw:
+    emoji: "🔧"
+    requires:
+      env:
+        - API_KEY
+    primaryEnv: API_KEY
 ---
 
 # 技能说明
@@ -281,9 +412,8 @@ metadata:
 ## 目录结构
 
 scripts/     # 可执行脚本（Python/PowerShell/Bash）
-references/  # 参考文档
+references/  # 参考文档  
 assets/      # 资源文件
-agents/      # 子智能体定义
 ```
 
 ### 技能包格式
@@ -293,11 +423,19 @@ agents/      # 子智能体定义
 ```
 data/skills/openclaw_skills/
 ├── search-2-0.1.0.zip          # 技能包（会自动解压）
+├── bocha-web-search-1.0.2.zip  # 技能包
 └── __unpacked__/
-    └── search-2-0.1.0/         # 解压后的技能目录
+    ├── search-2-0.1.0/         # 解压后的技能目录
+    │   ├── SKILL.md
+    │   ├── _meta.json
+    │   └── scripts/
+    │       └── search.sh
+    └── bocha-web-search-1.0.2/
         ├── SKILL.md
+        ├── _meta.json
+        ├── skill-card.md
         └── scripts/
-            └── search.sh
+            └── bocha-web-search.py
 ```
 
 ## 📋 工作流定义
@@ -348,11 +486,15 @@ steps:
 | `reload` | 重新加载技能 | - |
 | `workflow` | 嵌套调用工作流 | `workflow`, `inputs` |
 | `log` | 日志记录 | `text` |
+| `llm` | 调用大模型生成文本 | `prompt`, `provider`, `model`, `max_tokens`, `temperature` |
 
 ## 🧩 作为库使用
 
+### 基础用法
+
 ```python
 from src.agent.agent import Agent
+from src.skill.skill import create_skill_manager
 
 # 初始化智能体
 agent = Agent("config.yaml")
@@ -366,36 +508,117 @@ print(resp.reply)
 for skill, score in resp.matched_skills:
     print(f"  [{skill.source}] {skill.name} ({score:.2f})")
 
-# 运行技能脚本
+# 运行技能脚本（方式1：通过 Agent）
 result = agent.ask("/run search")
 print(result.reply)
+
+# 运行技能脚本（方式2：直接调用）
+mgr = create_skill_manager("config.yaml")
+json_args = '{"query": "AI news", "max_results": 5}'
+result = mgr.execute_skill("search", args=[json_args])
+print(result.stdout)
 
 # 执行工作流
 wf_result = agent.run_workflow("demo", inputs={"query": "测试"})
 print(f"工作流 {wf_result.name}: {'成功' if wf_result.ok else '失败'}")
 ```
 
+### LLM 调用
+
+```python
+from src.llm import ModelManager
+
+# 创建模型管理器
+manager = ModelManager("data/Opus.json")
+
+# 获取默认模型
+llm = manager.get_default_model()
+print(f"当前模型: {llm.provider}")
+
+# 文本生成
+result = llm.generate("写一首关于春天的诗", max_tokens=300)
+if result.ok:
+    print(result.content)
+
+# 对话模式
+with manager.session("my_session") as session:
+    response = session.chat("你好")
+    print(response.content)
+    
+    response = session.chat("请介绍一下你自己")
+    print(response.content)
+
+# 通过 Agent 调用 LLM
+agent = Agent("config.yaml")
+result = agent.llm_generate("写一个 Python 函数示例", max_tokens=200)
+print(result.content)
+
+# 列出可用模型
+models = agent.llm_list_models()
+for m in models:
+    print(f"- {m['provider']}: {m['name']}")
+```
+
+## 🔧 技能执行方式
+
+### 关键字参数（推荐）
+
+```bash
+python main.py -e search -k query="AI news" -k max_results=5
+```
+
+### 位置参数（JSON格式）
+
+```bash
+# PowerShell 中使用
+python main.py -e search -a '{"query": "AI news"}'
+
+# 或使用变量
+$json = '{"query": "AI news", "max_results": 5}'
+python main.py -e search -a $json
+```
+
+### 从大模型获取参数
+
+```python
+import json
+from src.skill.skill import create_skill_manager
+
+# 大模型生成的参数
+llm_output = {
+    "query": "AI news",
+    "max_results": 5,
+    "search_depth": "advanced"
+}
+
+# 执行技能
+mgr = create_skill_manager("config.yaml")
+json_args = json.dumps(llm_output)
+result = mgr.execute_skill("search", args=[json_args])
+```
+
 ## 📝 输出示例
 
 ```
-已加载 317 个技能。输入 /help 查看帮助，输入 /bye 退出。
+已加载 2 个技能。输入 /help 查看帮助，输入 /bye 退出。
 
-你> build a web project
+你> AI news
 Agent>
 我为你找到这些相关技能：
 
-1. [hermes] web-artisan  (相关度 1.00)
-   Create distinctive, production-grade web interfaces...
-   路径: /home/user/.trae-cn/builtin/trae/penelope/skills/web-artisan
-   可执行: generate.sh
+1. [openclaw] search  (相关度 0.95)
+   Search the web using Tavily's LLM-optimized search API.
+   路径: data/skills/openclaw_skills/__unpacked__/search-2-0.1.0
+   脚本: search.sh
 
-2. [hermes] web-dev  (相关度 0.85)
-   Create production-grade web interfaces...
-   路径: /home/user/.trae-cn/builtin/trae/penelope/skills/web-dev
+2. [openclaw] bocha-web-search  (相关度 0.88)
+   博查 Web 搜索工具，使用 Bocha Web Search API。
+   路径: data/skills/openclaw_skills/__unpacked__/bocha-web-search-1.0.2
+   脚本: bocha-web-search.py
 
 建议的下一步：
-  - 输入 /show web-artisan   查看完整技能说明
-  - 输入 /run web-artisan    执行该技能的脚本
+  - 输入 /show search   查看完整技能说明
+  - 输入 /run search    执行该技能的脚本
 ```
 
 ## 🔒 安全说明
@@ -404,6 +627,7 @@ Agent>
 - 默认智能体不会自动执行任何脚本（需要显式使用 `/run`）
 - 脚本执行超时为 120 秒
 - API 服务默认监听 localhost，生产环境请配置防火墙
+- API Key 存储在 `data/Opus.json`，请妥善保管
 
 ## 📄 许可证
 

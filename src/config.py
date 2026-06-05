@@ -1,4 +1,4 @@
-"""配置管理模块 - 支持环境变量、.env 文件和 Opus.json 加载"""
+"""配置管理模块 - 主要从 Opus.json 加载配置"""
 
 import json
 import os
@@ -8,26 +8,11 @@ from typing import Dict, Any, Optional
 import yaml
 
 
-def load_env_file(env_path: str = ".env") -> Dict[str, str]:
-    """加载 .env 文件中的环境变量"""
-    env_vars = {}
-    path = Path(env_path)
-    if path.exists():
-        with open(path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                if '=' in line:
-                    key, value = line.split('=', 1)
-                    env_vars[key.strip()] = value.strip()
-    return env_vars
-
-
 def load_opus_json(json_path: str = "data/Opus.json") -> Dict[str, Any]:
-    """加载 Opus.json 配置文件"""
+    """加载 Opus.json 配置文件（主要配置文件）"""
     path = Path(json_path)
     if not path.exists():
+        print(f"警告: Opus.json 配置文件不存在 - {json_path}")
         return {}
     
     try:
@@ -39,11 +24,8 @@ def load_opus_json(json_path: str = "data/Opus.json") -> Dict[str, Any]:
 
 
 def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
-    """加载配置文件，支持环境变量覆盖"""
-    # 先加载 .env 文件
-    env_vars = load_env_file()
-    
-    # 加载 Opus.json（技能和 LLM 的 API Keys）
+    """加载配置文件，主要从 Opus.json 获取密钥"""
+    # 加载 Opus.json（技能和 LLM 的 API Keys，这是主要的配置来源）
     opus_config = load_opus_json()
     
     # 加载 YAML 配置
@@ -66,7 +48,7 @@ def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
     config.setdefault("min_relevance", 0.15)
     config.setdefault("history_limit", 20)
     
-    # 合并 Opus.json 中的配置
+    # 合并 Opus.json 中的配置（优先级最高）
     if opus_config:
         config.setdefault("api_keys", {})
         config["api_keys"].update(opus_config.get("api_keys", {}))
@@ -76,55 +58,20 @@ def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
         config.setdefault("settings", {})
         config["settings"].update(settings)
     
-    # 添加 API keys（优先环境变量，其次 .env 文件）
-    env_api_keys = {}
-    for key in ["TAVILY_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]:
-        # 优先系统环境变量
-        value = os.environ.get(key)
-        if not value:
-            # 其次 .env 文件
-            value = env_vars.get(key)
-        if value:
-            env_api_keys[key] = value
-    
-    if env_api_keys:
-        config.setdefault("env_api_keys", {})
-        config["env_api_keys"].update(env_api_keys)
-    
     return config
 
 
 def get_api_key(name: str, category: str = None) -> Optional[str]:
-    """获取指定的 API Key
-    
-    优先级：
-    1. 系统环境变量（如 TAVILY_API_KEY）
-    2. .env 文件
-    3. Opus.json 中的配置（支持分类查找）
-    4. config.yaml 中的 api_keys 配置
+    """获取指定的 API Key（从 Opus.json 获取）
     
     Args:
-        name: API Key 名称（如 'tavily', 'openai', 'TAVILY_API_KEY'）
+        name: API Key 名称（如 'tavily', 'openai'）
         category: 分类（'skills', 'llm', 'other'），如果为 None 则自动检测
     
     Returns:
         API Key 值，如果未找到返回 None
     """
-    # 1. 系统环境变量
-    env_name = name.upper()
-    if not env_name.endswith("_API_KEY"):
-        env_name = f"{env_name}_API_KEY"
-    value = os.environ.get(env_name)
-    if value:
-        return value
-    
-    # 2. .env 文件
-    env_vars = load_env_file()
-    value = env_vars.get(env_name)
-    if value:
-        return value
-    
-    # 3. Opus.json
+    # 从 Opus.json 获取（唯一来源）
     opus_config = load_opus_json()
     api_keys = opus_config.get("api_keys", {})
     
@@ -143,14 +90,6 @@ def get_api_key(name: str, category: str = None) -> Optional[str]:
             lower_name = name.lower()
             if lower_name in category_config:
                 return category_config[lower_name].get("api_key")
-    
-    # 4. config.yaml
-    try:
-        config = load_config()
-        api_keys = config.get("api_keys", {})
-        return api_keys.get(name)
-    except Exception:
-        pass
     
     return None
 
@@ -186,6 +125,52 @@ def set_api_key(name: str, api_key: str, category: str = "skills", enabled: bool
     path = Path("data/Opus.json")
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(opus_config, f, indent=2, ensure_ascii=False)
+
+
+def get_llm_config(provider: str) -> Optional[Dict[str, Any]]:
+    """获取指定 LLM 提供商的配置。
+    
+    Args:
+        provider: LLM 提供商名称（如 'openai', 'anthropic', 'google', 'local', 'azure'）
+    
+    Returns:
+        LLM 配置字典，如果未找到返回 None
+    """
+    opus_config = load_opus_json()
+    llm_configs = opus_config.get("api_keys", {}).get("llm", {})
+    return llm_configs.get(provider)
+
+
+def get_all_llm_configs() -> Dict[str, Dict[str, Any]]:
+    """获取所有 LLM 提供商的配置。
+    
+    Returns:
+        所有 LLM 配置字典，格式: {provider: config}
+    """
+    opus_config = load_opus_json()
+    return opus_config.get("api_keys", {}).get("llm", {})
+
+
+def get_default_llm() -> str:
+    """获取默认 LLM 提供商。
+    
+    Returns:
+        默认提供商名称
+    """
+    opus_config = load_opus_json()
+    settings = opus_config.get("settings", {})
+    return settings.get("default_llm", "openai")
+
+
+def get_fallback_llm() -> str:
+    """获取故障转移 LLM 提供商。
+    
+    Returns:
+        故障转移提供商名称
+    """
+    opus_config = load_opus_json()
+    settings = opus_config.get("settings", {})
+    return settings.get("fallback_llm", "local")
 
 
 # 全局配置实例

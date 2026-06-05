@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -46,7 +47,7 @@ def run_interactive() -> int:
 
 def run_query(query: str, top_k: int = 5) -> int:
     """快速测试意图匹配。"""
-    from src.skill_scripts.skill import match_skills
+    from src.skill.skill import match_skills
 
     config_path = str(PROJECT_ROOT / "config.yaml")
     results = match_skills(config_path, query, top_k=top_k)
@@ -72,7 +73,7 @@ def run_query(query: str, top_k: int = 5) -> int:
 
 def run_list(source: Optional[str] = None) -> int:
     """列出技能。"""
-    from src.skill_scripts.skill import create_skill_manager
+    from src.skill.skill import create_skill_manager
 
     config_path = str(PROJECT_ROOT / "config.yaml")
     mgr = create_skill_manager(config_path)
@@ -97,7 +98,7 @@ def run_list(source: Optional[str] = None) -> int:
 def run_skill_cmd(skill_name: str, script_name: Optional[str] = None,
                   args: Optional[List[str]] = None) -> int:
     """通过 SkillManager 运行某个技能脚本。"""
-    from src.skill_scripts.skill import create_skill_manager
+    from src.skill.skill import create_skill_manager
 
     config_path = str(PROJECT_ROOT / "config.yaml")
     mgr = create_skill_manager(config_path)
@@ -123,10 +124,132 @@ def run_skill_cmd(skill_name: str, script_name: Optional[str] = None,
     return 0 if result.returncode == 0 else 1
 
 
+def execute_skill(skill_name: str, *pos_args, **kwargs) -> int:
+    """直接执行技能脚本，支持灵活的参数传递。
+    
+    用法:
+        execute_skill("search", "query", max_results=5)
+        execute_skill("search", query="AI news", topic="news")
+    
+    平台适配:
+        - Windows: 直接使用 Smart Shell Executor（PowerShell 模拟）
+        - Linux/macOS: 使用原生 bash
+    """
+    from src.skill.skill import create_skill_manager
+    from src.agent.executor import _run_with_powershell_emulation
+
+    config_path = str(PROJECT_ROOT / "config.yaml")
+    mgr = create_skill_manager(config_path)
+    skill = mgr.registry.get(skill_name)
+
+    if not skill:
+        print(f"[错误] 找不到技能: {skill_name}")
+        print(f"可用技能: {[s.name for s in mgr.registry.list()]}")
+        return 1
+
+    print(f"执行技能: {skill.name}")
+    print(f"技能路径: {skill.path}")
+    print(f"位置参数: {pos_args}")
+    print(f"关键字参数: {kwargs}")
+    print("-" * 60)
+
+    if kwargs:
+        import json
+        json_args = json.dumps(kwargs)
+        args_list = [json_args]
+    elif pos_args:
+        args_list = list(pos_args)
+    else:
+        args_list = None
+
+    # 找到脚本路径
+    from src.agent.executor import _pick_executable
+    
+    # 从 Opus.json 加载 API Key
+    opus_json_path = PROJECT_ROOT / "data" / "Opus.json"
+    api_keys_env = {}
+    if opus_json_path.exists():
+        try:
+            with open(opus_json_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                skills_keys = config.get("api_keys", {}).get("skills", {})
+                for key_name, key_info in skills_keys.items():
+                    if key_info.get("enabled", False) and key_info.get("api_key"):
+                        env_var_name = f"{key_name.upper()}_API_KEY"
+                        api_keys_env[env_var_name] = key_info["api_key"]
+        except (json.JSONDecodeError, OSError):
+            pass
+    
+    skill_obj = mgr.registry.get(skill_name)
+    if skill_obj:
+        script_path = _pick_executable(skill_obj)
+        if script_path and script_path.exists():
+            # 根据脚本类型选择执行方式
+            if script_path.suffix == ".py":
+                # Python 脚本直接执行
+                print(f"[Python] 直接执行 Python 脚本: {script_path.name}")
+                cmd = [sys.executable, str(script_path)] + (args_list or [])
+                # 合并环境变量
+                env = {**os.environ, **api_keys_env, "PYTHONIOENCODING": "utf-8"}
+                try:
+                    proc = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=False,
+                        timeout=120,
+                        env=env,
+                    )
+                    print("\n[执行结果]")
+                    print(f"  动作: run: python {script_path.name}")
+                    print(f"  返回码: {proc.returncode}")
+                    if proc.stdout:
+                        try:
+                            stdout_str = proc.stdout.decode('utf-8')
+                        except UnicodeDecodeError:
+                            stdout_str = proc.stdout.decode('gbk', errors='replace')
+                        print(f"  stdout:\n{stdout_str}")
+                    if proc.stderr:
+                        try:
+                            stderr_str = proc.stderr.decode('utf-8')
+                        except UnicodeDecodeError:
+                            stderr_str = proc.stderr.decode('gbk', errors='replace')
+                        print(f"  stderr:\n{stderr_str}")
+                    return 0 if proc.returncode == 0 else 1
+                except subprocess.TimeoutExpired:
+                    print("\n[执行结果]")
+                    print("  动作: timeout")
+                    print("  返回码: 124")
+                    print("  stderr: 执行超时 (120s)")
+                    return 124
+                except OSError as exc:
+                    print("\n[执行结果]")
+                    print("  动作: error")
+                    print(f"  返回码: 2")
+                    print(f"  stderr: 无法执行: {exc}")
+                    return 2
+            elif script_path.suffix == ".sh" and sys.platform.startswith("win"):
+                # Windows 平台使用 PowerShell 模拟执行 shell 脚本
+                print(f"[Smart Shell] Windows 平台，使用 PowerShell 模拟执行: {script_path.name}")
+                result = _run_with_powershell_emulation(script_path, args_list)
+                _print_result(result)
+                return 0 if result.returncode == 0 else 1
+            else:
+                # 其他平台或脚本类型使用原生执行方式
+                result = mgr.execute_skill(skill_name, args=args_list)
+                _print_result(result)
+                return 0 if result.returncode == 0 else 1
+        else:
+            print(f"[错误] 无法找到可执行脚本")
+            return 1
+    else:
+        print(f"[错误] 找不到技能对象")
+        return 1
+
+
 def run_workflow(name: str, inputs_json: Optional[str] = None,
                  query: Optional[str] = None) -> int:
     """执行工作流。"""
-    from src.workflow_scripts.workflow import (
+    from src.workflow.workflow import (
         discover_workflows, WorkflowExecutor,
     )
     from src.agent.agent import Agent
@@ -223,7 +346,7 @@ def run_workflow(name: str, inputs_json: Optional[str] = None,
 
 def list_workflows() -> int:
     """列出所有工作流。"""
-    from src.workflow_scripts.workflow import discover_workflows
+    from src.workflow.workflow import discover_workflows
     import yaml as _yaml
 
     config_path = PROJECT_ROOT / "config.yaml"
@@ -345,8 +468,9 @@ def build_parser() -> argparse.ArgumentParser:
     quick = parser.add_argument_group("快速操作")
     quick.add_argument("-q", "--query", metavar="TEXT",
                        help="快速测试意图匹配")
-    quick.add_argument("-l", "--list", nargs="?", const="", metavar="SOURCE",
-                       help="列出技能（可按来源过滤）")
+    quick.add_argument("-l", "--list", nargs="?", const="skills", metavar="TYPE",
+                       choices=["skills", "workflows"],
+                       help="列出资源类型: skills - 技能列表, workflows - 工作流列表")
 
     skill_group = parser.add_argument_group("技能执行")
     skill_group.add_argument("-e", "--execute", metavar="SKILL",
@@ -356,10 +480,13 @@ def build_parser() -> argparse.ArgumentParser:
     skill_group.add_argument("-a", "--arg", action="append", metavar="VAL",
                              dest="pos_args",
                              help="位置参数（可多次使用）")
+    skill_group.add_argument("-k", "--kwarg", action="append", metavar="KEY=VAL",
+                             dest="kwargs",
+                             help="关键字参数（可多次使用，如 -k query=test）")
 
     wf_group = parser.add_argument_group("工作流")
     wf_group.add_argument("--workflows", action="store_true",
-                          help="列出所有工作流")
+                          help="列出所有工作流（同 --list workflows）")
     wf_group.add_argument("-w", "--workflow", metavar="NAME",
                           help="执行指定工作流")
     wf_group.add_argument("--wf-query", metavar="TEXT",
@@ -418,13 +545,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         return run_query(args.query, args.topk)
 
     if args.list is not None:
-        return run_list(args.list or None)
+        if args.list == "workflows":
+            return list_workflows()
+        else:
+            # 默认列出技能（支持按来源过滤）
+            return run_list(args.list if args.list != "skills" else None)
 
     if args.execute:
-        return run_skill_cmd(
+        kwargs_dict = {}
+        if args.kwargs:
+            for kw in args.kwargs:
+                if '=' in kw:
+                    key, val = kw.split('=', 1)
+                    kwargs_dict[key.strip()] = val.strip()
+        
+        return execute_skill(
             skill_name=args.execute,
-            script_name=args.script,
-            args=args.pos_args or [],
+            * (args.pos_args or []),
+            **kwargs_dict
         )
 
     if args.interactive:

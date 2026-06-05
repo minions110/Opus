@@ -3,23 +3,25 @@
 负责：
 1. 通过 skill.py 加载和管理技能
 2. 根据用户输入匹配最相关的技能
-3. 根据匹配结果生成结构化的回复（不调用任何远程 LLM，
-   纯本地基于技能描述做路由）
+3. 集成 LLM 能力，支持对话和文本生成
+4. 根据匹配结果生成结构化的回复
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any, Dict
 
 import yaml
 
-from ..skill_scripts.skill import SkillManager, SkillRegistry
-from ..skill_scripts.models import Skill
-from ..workflow_scripts.workflow import WorkflowExecutor, discover_workflows
+from ..llm import ModelManager, LLMResponse
+from ..skill.skill import SkillManager, SkillRegistry
+from ..skill.models import Skill
+from ..workflow.workflow import WorkflowExecutor, discover_workflows
 from .executor import ExecResult, describe_skill, read_reference, run_skill_script
 
 logger = logging.getLogger(__name__)
@@ -51,7 +53,7 @@ class AgentResponse:
 # ---------------------------------------------------------------------------
 
 class Agent:
-    """统一使用 openclaw 技能的智能体。"""
+    """统一使用 openclaw 技能的智能体，集成 LLM 能力。"""
 
     def __init__(self, config_path: str | Path):
         self.config_path = Path(config_path).resolve()
@@ -63,6 +65,9 @@ class Agent:
         # 通过 skill.py 管理技能
         self.skill_manager = SkillManager(str(self.config_path))
         self.skill_manager.extract_and_load()
+        
+        # 初始化 LLM 管理器
+        self.llm_manager = ModelManager()
         
         self.reload_workflows()
 
@@ -102,6 +107,94 @@ class Agent:
         self.workflows = discover_workflows(roots)
         self.workflow_executor = WorkflowExecutor(self, self.workflows)
         return {"total": len(self.workflows), "names": list(self.workflows)}
+
+    # ------------------------------------------------------------
+    # LLM 相关方法
+    # ------------------------------------------------------------
+
+    def llm_generate(
+        self,
+        prompt: str,
+        provider: Optional[str] = None,
+        **kwargs
+    ) -> LLMResponse:
+        """调用 LLM 生成文本。
+        
+        Args:
+            prompt: 提示词
+            provider: LLM 提供商（可选，默认使用配置中的 default_llm）
+            **kwargs: 其他参数（max_tokens, temperature 等）
+        
+        Returns:
+            LLMResponse 对象
+        """
+        return self.llm_manager.generate(prompt, provider=provider, **kwargs)
+
+    def llm_chat(
+        self,
+        messages: List[Dict[str, str]],
+        provider: Optional[str] = None,
+        **kwargs
+    ) -> LLMResponse:
+        """调用 LLM 对话模式。
+        
+        Args:
+            messages: 消息列表，格式为 [{"role": "...", "content": "..."}]
+            provider: LLM 提供商（可选）
+            **kwargs: 其他参数
+        
+        Returns:
+            LLMResponse 对象
+        """
+        return self.llm_manager.chat(messages, provider=provider, **kwargs)
+
+    def llm_embed(self, text: str, provider: Optional[str] = None, **kwargs) -> List[float]:
+        """生成文本嵌入向量。
+        
+        Args:
+            text: 输入文本
+            provider: LLM 提供商（可选）
+            **kwargs: 其他参数
+        
+        Returns:
+            嵌入向量列表
+        """
+        return self.llm_manager.embed(text, provider=provider, **kwargs)
+
+    def llm_list_models(self) -> List[Dict[str, Any]]:
+        """列出所有可用的 LLM 模型。"""
+        return self.llm_manager.list_available_models()
+
+    def llm_switch_model(self, provider: str) -> bool:
+        """切换当前默认 LLM 模型。
+        
+        Args:
+            provider: 提供商名称（openai, anthropic, google, local, azure）
+        
+        Returns:
+            是否切换成功
+        """
+        return self.llm_manager.switch_model(provider)
+
+    def llm_health_check(self, provider: Optional[str] = None) -> bool:
+        """检查 LLM 服务健康状态。"""
+        return self.llm_manager.health_check(provider=provider)
+
+    def llm_session(self, session_id: str = "default", provider: Optional[str] = None):
+        """获取或创建 LLM 会话。
+        
+        Args:
+            session_id: 会话 ID
+            provider: LLM 提供商（可选）
+        
+        Returns:
+            ChatSession 对象
+        """
+        return self.llm_manager.session(session_id=session_id, provider=provider)
+
+    # ------------------------------------------------------------
+    # 工作流加载与执行
+    # ------------------------------------------------------------
 
     def list_workflows(self) -> list:
         if self.workflow_executor is None:

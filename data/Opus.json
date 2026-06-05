@@ -16,10 +16,17 @@
     "skills": {
       "tavily": {
         "name": "Tavily Search API",
-        "api_key": "",
-        "enabled": false,
+        "api_key": "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",
+        "enabled": true,
         "endpoint": "https://api.tavily.com/search",
         "description": "用于网络搜索技能"
+      },
+      "bocha": {
+        "name": "Bocha Web Search API",
+        "api_key": "sk-36541b1e5f6d44e9bb26d26c21ec4046",
+        "enabled": true,
+        "endpoint": "https://api.bocha.cn/v1/web-search",
+        "description": "博查 Web 搜索服务"
       },
       "web_search": {
         "name": "Web Search API",
@@ -104,10 +111,29 @@
       "local": {
         "name": "本地模型",
         "api_key": "",
-        "enabled": false,
+        "enabled": true,
         "endpoint": "http://localhost:8080/v1",
-        "description": "本地部署的大语言模型",
-        "models": []
+        "description": "本地部署的大语言模型（支持 Ollama 或 OpenAI 兼容接口）",
+        "models": ["qwen2-7b-chat", "llama3", "mistral"],
+        "default_model": "qwen2-7b-chat"
+      },
+      "deepseek": {
+        "name": "DeepSeek API",
+        "api_key": "sk-50b96188283543c1a74e3dbcfbef7ea7",
+        "enabled": true,
+        "endpoint": "https://api.deepseek.com/v1",
+        "description": "深度求索 DeepSeek 大语言模型服务",
+        "models": ["deepseek-v4-flash", "deepseek-v4-pro"],
+        "default_model": "deepseek-v4-flash"
+      },
+      "doubao": {
+        "name": "豆包 API",
+        "api_key": "",
+        "enabled": false,
+        "endpoint": "https://api.doubao.com/v1",
+        "description": "字节跳动豆包大语言模型服务",
+        "models": ["Doubao-3.5", "Doubao-4", "Doubao-Lite"],
+        "default_model": "Doubao-3.5"
       }
     },
     "other": {
@@ -128,8 +154,8 @@
     }
   },
   "settings": {
-    "default_llm": "openai",
-    "default_search": "tavily",
+    "default_llm": "deepseek",
+    "default_search": "bocha",
     "auto_reload": true,
     "cache_enabled": true,
     "log_level": "INFO",

@@ -14,11 +14,12 @@ import shlex
 import shutil
 import subprocess
 import sys
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from ..skill_scripts.models import Skill
+from ..skill.models import Skill
 
 logger = logging.getLogger(__name__)
 
@@ -104,20 +105,22 @@ def _find_bash_on_windows() -> Optional[str]:
 
 
 def _parse_shell_script(script_path: Path) -> list:
-    """简单解析 shell 脚本，提取主要命令。
+    """简单解析 shell 脚本，提取 curl 命令。
     
     这是一个简化的解析器，用于在没有 bash 的环境中尝试执行简单脚本。
-    支持多行命令（反斜杠续行）。
+    支持多行命令（反斜杠续行），只提取 curl 命令。
     """
     commands = []
     try:
         with open(script_path, 'r', encoding='utf-8') as f:
             current_command = ''
+            in_curl = False
+            
             for line in f:
                 line = line.rstrip('\n')
                 
-                # 处理反斜杠续行
-                if line.endswith('\\'):
+                # 处理反斜杠续行（curl 命令常用）
+                if in_curl and line.endswith('\\'):
                     current_command += line[:-1].strip() + ' '
                     continue
                 
@@ -125,28 +128,32 @@ def _parse_shell_script(script_path: Path) -> list:
                 if current_command:
                     line = current_command + line.strip()
                     current_command = ''
+                    in_curl = False
                 
                 line = line.strip()
                 
                 # 跳过注释和空行
                 if not line or line.startswith('#'):
                     continue
-                # 跳过 set 命令
-                if line.startswith('set '):
-                    continue
-                # 跳过 if 语句
-                if line.startswith('if ') or line.startswith('fi'):
-                    continue
-                # 跳过 export/exit
-                if line.startswith('export ') or line.startswith('exit'):
-                    continue
-                # 跳过变量赋值语句（如 VAR=value）
-                if '=' in line and not line.startswith(('curl', 'echo', 'cat', 'grep', 'sed', 'awk')):
-                    # 检查是否是简单的变量赋值
-                    parts = line.split('=', 1)
-                    if len(parts) == 2 and parts[0].strip().isidentifier():
-                        continue
-                commands.append(line)
+                
+                # 检查是否是 curl 命令开始
+                if line.startswith('curl '):
+                    # 检查是否续行
+                    if line.endswith('\\'):
+                        current_command = line[:-1].strip() + ' '
+                        in_curl = True
+                    else:
+                        commands.append(line)
+                elif in_curl:
+                    # 继续累积 curl 命令
+                    if line.endswith('\\'):
+                        current_command += line[:-1].strip() + ' '
+                    else:
+                        current_command += line.strip()
+                        commands.append(current_command)
+                        current_command = ''
+                        in_curl = False
+                    
     except Exception as e:
         logger.error(f"解析脚本失败: {e}")
     return commands
@@ -242,9 +249,13 @@ def _convert_curl_to_powershell(curl_cmd: str) -> str:
     
     # 处理 body
     if data:
-        # 如果数据包含环境变量引用，保留原样
-        data_escaped = data.replace('"', '`"').replace('`', '``')
-        ps_parts.append(f'$body = "{data_escaped}"')
+        # 如果数据是变量引用（以 $ 开头），直接使用变量
+        if data.startswith('$') and data[1:].isidentifier():
+            ps_parts.append(f'$body = {data}')
+        else:
+            # 否则作为字符串处理，转义特殊字符
+            data_escaped = data.replace('"', '`"').replace('`', '``')
+            ps_parts.append(f'$body = "{data_escaped}"')
     
     # 构建 Invoke-RestMethod 调用
     invoke_parts = ['Invoke-RestMethod']
@@ -261,6 +272,19 @@ def _convert_curl_to_powershell(curl_cmd: str) -> str:
     ps_parts.append('$response | ConvertTo-Json -Depth 10')
     
     return "\n".join(ps_parts)
+
+
+def _load_api_keys_from_opus_json() -> dict:
+    """从 Opus.json 配置文件中加载 API Key。"""
+    opus_json_path = Path(__file__).resolve().parent.parent.parent / "data" / "Opus.json"
+    if opus_json_path.exists():
+        try:
+            with open(opus_json_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                return config.get("api_keys", {})
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
 
 
 def _run_with_powershell_emulation(script_path: Path, args: Optional[List[str]] = None) -> ExecResult:
@@ -281,19 +305,30 @@ def _run_with_powershell_emulation(script_path: Path, args: Optional[List[str]] 
     
     # 设置环境变量参数
     if args and len(args) > 0:
-        ps_commands.append(f'$JSON_INPUT = "{args[0]}"')
+        # 转义 PowerShell 字符串中的双引号
+        escaped_args0 = args[0].replace('"', '`"')
+        ps_commands.append(f'$JSON_INPUT = "{escaped_args0}"')
     
+    # 从 Opus.json 加载 API Key 并设置环境变量
+    api_keys = _load_api_keys_from_opus_json()
+    skills_keys = api_keys.get("skills", {})
+    for key_name, key_info in skills_keys.items():
+        if key_info.get("enabled", False) and key_info.get("api_key"):
+            env_var_name = f"{key_name.upper()}_API_KEY"
+            api_key = key_info["api_key"]
+            ps_commands.append(f'$env:{env_var_name} = "{api_key}"')
+    
+    # 只执行 curl 命令，跳过其他命令（如 echo 等）
+    has_curl = False
     for cmd in commands:
         # 处理 curl 命令
         if cmd.startswith('curl '):
             ps_cmd = _convert_curl_to_powershell(cmd)
             ps_commands.append(ps_cmd)
-        else:
-            # 替换 $VAR 为 $env:VAR
-            ps_cmd = re.sub(r'\$([A-Za-z_]+)', r'$env:\1', cmd)
-            # 替换 echo 为 Write-Host
-            ps_cmd = ps_cmd.replace('echo ', 'Write-Host ')
-            ps_commands.append(ps_cmd)
+            has_curl = True
+    
+    if not has_curl:
+        return ExecResult("powershell-emulation", "no-curl", 1, "", "脚本中没有找到 curl 命令")
     
     full_command = "\n".join(ps_commands)
     
