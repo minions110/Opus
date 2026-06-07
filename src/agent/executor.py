@@ -1,23 +1,34 @@
-"""执行技能中的脚本与命令。
+"""Smart Shell Executor —— 跨平台脚本执行器。
 
-出于安全考虑，默认不自动执行任何脚本，而是：
-- 返回 skill 的 scripts / references / assets 清单
-- 让用户显式选择是否执行某个脚本
+设计目标:
+  1. 技能包里的脚本 (.sh / .py / .ps1 / .bat) 在 Windows / Linux / macOS 上都能跑
+  2. 自动从 Opus.json（api_keys.{skills,llm,other}.<name>.api_key）为子进程注入环境变量
+     映射规则:  skill 名或 provider 名大写，附加 "_API_KEY"
+       - bocha         -> BOCHA_API_KEY
+       - search        -> SEARCH_API_KEY  (以及 TAVILY_API_KEY 兼容)
+       - deepseek      -> DEEPSEEK_API_KEY
+       - openai        -> OPENAI_API_KEY
+       - doubao        -> DOUBAO_API_KEY
+       - anthropic     -> ANTHROPIC_API_KEY
+       - google        -> GOOGLE_API_KEY
+       - azure         -> AZURE_API_KEY
+       - local         -> LOCAL_API_KEY
+  3. 执行优先级（对同一个技能的多个脚本）: .py > .sh > .ps1 > .bat
+  4. .py 永远用 sys.executable 子进程跑；.sh 优先 bash，无 bash 时用系统默认
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-import re
 import shlex
 import shutil
 import subprocess
 import sys
-import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ..skill.models import Skill
 
@@ -27,7 +38,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ExecResult:
     skill_name: str
-    action: str             # e.g. "run script x"
+    action: str
     returncode: int
     stdout: str
     stderr: str
@@ -38,419 +49,315 @@ class ExecResult:
 
 
 # ---------------------------------------------------------------------------
-# 工具函数
+# Opus.json 解析 & API key 注入
 # ---------------------------------------------------------------------------
 
-def _pick_executable(skill: Skill) -> Optional[Path]:
-    """从 skill 的 scripts/ 中挑一个主要脚本（优先同名的 .py 文件）。"""
-    if not skill.scripts:
-        return None
-    scripts_dir = skill.path / "scripts"
-    
-    py_scripts = [s for s in skill.scripts if s.endswith(".py")]
-    other_scripts = [s for s in skill.scripts if not s.endswith(".py")]
-    
-    # 优先同名的 .py 脚本
-    for name in py_scripts:
-        stem = Path(name).stem
-        if stem == skill.name or stem.replace("_", "-") == skill.name:
-            p = scripts_dir / name
-            if p.is_file():
-                return p
-    
-    # 如果有 .py 脚本，优先选择第一个 .py 脚本
-    if py_scripts:
-        p = scripts_dir / py_scripts[0]
-        if p.is_file():
-            return p
-    
-    # 最后选择同名的其他脚本
-    for name in other_scripts:
-        stem = Path(name).stem
-        if stem == skill.name or stem.replace("_", "-") == skill.name:
-            p = scripts_dir / name
-            if p.is_file():
-                return p
-    
-    return scripts_dir / skill.scripts[0]
+_CACHED_OPUS: Optional[Tuple[Path, dict]] = None
 
 
-def _find_bash_on_windows() -> Optional[str]:
-    """在 Windows 上查找可用的 bash 解释器。
-    
-    返回 bash 可执行文件路径，如果找不到返回 None。
-    """
-    # 优先查找 git bash
-    git_bash_paths = [
-        os.path.join(os.environ.get("ProgramFiles", "C:\\Program Files"), "Git", "bin", "bash.exe"),
-        os.path.join(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"), "Git", "bin", "bash.exe"),
-        os.path.join(os.environ.get("USERPROFILE", "C:\\Users"), "AppData", "Local", "Programs", "Git", "bin", "bash.exe"),
-        "C:\\Git\\bin\\bash.exe",
+def _find_opus_json(cwd: Optional[Path] = None) -> Optional[Path]:
+    """在常见位置查找 Opus.json。"""
+    roots = [
+        Path(cwd or Path.cwd()),
+        Path(__file__).resolve().parent.parent.parent,
+        Path(__file__).resolve().parent.parent,
+        Path.cwd(),
     ]
-    
-    for path in git_bash_paths:
-        if os.path.exists(path):
-            return path
-    
-    # 查找 WSL bash
-    wsl_bash = "bash.exe"
-    try:
-        result = subprocess.run([wsl_bash, "--version"], capture_output=True, timeout=5)
-        if result.returncode == 0:
-            return wsl_bash
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-    
+    seen = set()
+    for root in roots:
+        if not root:
+            continue
+        for candidate in [root / "data" / "Opus.json",
+                          root / "Opus.json"]:
+            try:
+                rp = candidate.resolve()
+            except OSError:
+                continue
+            key = str(rp)
+            if key in seen:
+                continue
+            seen.add(key)
+            if rp.is_file():
+                return rp
     return None
 
 
-def _parse_shell_script(script_path: Path) -> list:
-    """简单解析 shell 脚本，提取 curl 命令。
-    
-    这是一个简化的解析器，用于在没有 bash 的环境中尝试执行简单脚本。
-    支持多行命令（反斜杠续行），只提取 curl 命令。
-    """
-    commands = []
+def _load_opus_keys(cwd: Optional[Path] = None) -> Dict[str, str]:
+    """读取 Opus.json 里的 api_keys，返回 {ENV_VAR_NAME: api_key}。"""
+    global _CACHED_OPUS
+    opus_path = _find_opus_json(cwd)
+    if opus_path is None:
+        return {}
     try:
-        with open(script_path, 'r', encoding='utf-8') as f:
-            current_command = ''
-            in_curl = False
-            
-            for line in f:
-                line = line.rstrip('\n')
-                
-                # 处理反斜杠续行（curl 命令常用）
-                if in_curl and line.endswith('\\'):
-                    current_command += line[:-1].strip() + ' '
-                    continue
-                
-                # 如果有累积的命令，添加到当前行
-                if current_command:
-                    line = current_command + line.strip()
-                    current_command = ''
-                    in_curl = False
-                
-                line = line.strip()
-                
-                # 跳过注释和空行
-                if not line or line.startswith('#'):
-                    continue
-                
-                # 检查是否是 curl 命令开始
-                if line.startswith('curl '):
-                    # 检查是否续行
-                    if line.endswith('\\'):
-                        current_command = line[:-1].strip() + ' '
-                        in_curl = True
-                    else:
-                        commands.append(line)
-                elif in_curl:
-                    # 继续累积 curl 命令
-                    if line.endswith('\\'):
-                        current_command += line[:-1].strip() + ' '
-                    else:
-                        current_command += line.strip()
-                        commands.append(current_command)
-                        current_command = ''
-                        in_curl = False
-                    
-    except Exception as e:
-        logger.error(f"解析脚本失败: {e}")
-    return commands
-
-
-def _simple_shell_split(cmd: str) -> list:
-    """简单的 shell 命令参数解析器，处理反斜杠转义和引号。"""
-    parts = []
-    current = ''
-    in_double_quotes = False
-    in_single_quotes = False
-    escape = False
-    
-    for char in cmd:
-        if escape:
-            current += char
-            escape = False
-        elif char == '\\':
-            escape = True
-        elif char == '"' and not in_single_quotes:
-            in_double_quotes = not in_double_quotes
-        elif char == "'" and not in_double_quotes:
-            in_single_quotes = not in_single_quotes
-        elif char == ' ' and not in_double_quotes and not in_single_quotes:
-            if current:
-                parts.append(current)
-                current = ''
-        else:
-            current += char
-    
-    if current:
-        parts.append(current)
-    
-    return parts
-
-
-def _convert_curl_to_powershell(curl_cmd: str) -> str:
-    """将 curl 命令转换为 PowerShell 的 Invoke-RestMethod 命令。"""
-    # 移除 curl -s
-    ps_cmd = curl_cmd.replace('curl -s', '').strip()
-    
-    # 解析参数（使用自定义解析器处理反斜杠）
-    parts = _simple_shell_split(ps_cmd)
-    
-    method = "POST"
-    url = ""
-    headers = {}
-    data = ""
-    
-    i = 0
-    while i < len(parts):
-        part = parts[i]
-        if part == '--request':
-            i += 1
-            method = parts[i]
-        elif part == '--url':
-            i += 1
-            url = parts[i]
-        elif part == '--header':
-            i += 1
-            header = parts[i]
-            if ':' in header:
-                key, value = header.split(':', 1)
-                # 正确处理引号
-                key = key.strip()
-                value = value.strip()
-                # 移除引号（支持单引号和双引号）
-                if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
-                    value = value[1:-1]
-                headers[key] = value
-        elif part == '--data':
-            i += 1
-            data = parts[i]
-            # 移除引号
-            if (data.startswith('"') and data.endswith('"')) or (data.startswith("'") and data.endswith("'")):
-                data = data[1:-1]
-        i += 1
-    
-    # 构建 PowerShell 命令
-    ps_parts = []
-    ps_parts.append(f'$uri = "{url}"')
-    ps_parts.append(f'$method = "{method}"')
-    
-    # 处理 headers（使用 PowerShell 哈希表语法）
-    if headers:
-        header_lines = []
-        for k, v in headers.items():
-            # 安全转义特殊字符
-            k_escaped = k.replace('"', '`"').replace('`', '``')
-            v_escaped = v.replace('"', '`"').replace('`', '``')
-            header_lines.append(f'"{k_escaped}" = "{v_escaped}"')
-        ps_parts.append(f'$headers = @{{ {"; ".join(header_lines)} }}')
-    
-    # 处理 body
-    if data:
-        # 如果数据是变量引用（以 $ 开头），直接使用变量
-        if data.startswith('$') and data[1:].isidentifier():
-            ps_parts.append(f'$body = {data}')
-        else:
-            # 否则作为字符串处理，转义特殊字符
-            data_escaped = data.replace('"', '`"').replace('`', '``')
-            ps_parts.append(f'$body = "{data_escaped}"')
-    
-    # 构建 Invoke-RestMethod 调用
-    invoke_parts = ['Invoke-RestMethod']
-    invoke_parts.append('-Uri $uri')
-    invoke_parts.append('-Method $method')
-    if headers:
-        invoke_parts.append('-Headers $headers')
-    if data:
-        invoke_parts.append('-Body $body')
-        invoke_parts.append('-ContentType "application/json"')
-    invoke_parts.append('-TimeoutSec 30')
-    
-    ps_parts.append(f'$response = {" ".join(invoke_parts)}')
-    ps_parts.append('$response | ConvertTo-Json -Depth 10')
-    
-    return "\n".join(ps_parts)
-
-
-def _load_api_keys_from_opus_json() -> dict:
-    """从 Opus.json 配置文件中加载 API Key。"""
-    opus_json_path = Path(__file__).resolve().parent.parent.parent / "data" / "Opus.json"
-    if opus_json_path.exists():
-        try:
-            with open(opus_json_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                return config.get("api_keys", {})
-        except (json.JSONDecodeError, OSError):
-            pass
-    return {}
-
-
-def _run_with_powershell_emulation(script_path: Path, args: Optional[List[str]] = None) -> ExecResult:
-    """使用 PowerShell 模拟执行简单的 shell 脚本。
-    
-    Smart Shell Emulator 特性：
-    1. 自动识别并转换 curl 命令为 PowerShell 的 Invoke-RestMethod
-    2. 支持环境变量替换
-    3. 支持基本的 bash 命令转换
-    
-    这是一个回退方案，当系统没有 bash 时使用。
-    """
-    commands = _parse_shell_script(script_path)
-    if not commands:
-        return ExecResult("unknown", "parse-error", 1, "", "无法解析 shell 脚本")
-    
-    ps_commands = []
-    
-    # 设置环境变量参数
-    if args and len(args) > 0:
-        # 转义 PowerShell 字符串中的双引号
-        escaped_args0 = args[0].replace('"', '`"')
-        ps_commands.append(f'$JSON_INPUT = "{escaped_args0}"')
-    
-    # 从 Opus.json 加载 API Key 并设置环境变量
-    api_keys = _load_api_keys_from_opus_json()
-    skills_keys = api_keys.get("skills", {})
-    for key_name, key_info in skills_keys.items():
-        if key_info.get("enabled", False) and key_info.get("api_key"):
-            env_var_name = f"{key_name.upper()}_API_KEY"
-            api_key = key_info["api_key"]
-            ps_commands.append(f'$env:{env_var_name} = "{api_key}"')
-    
-    # 只执行 curl 命令，跳过其他命令（如 echo 等）
-    has_curl = False
-    for cmd in commands:
-        # 处理 curl 命令
-        if cmd.startswith('curl '):
-            ps_cmd = _convert_curl_to_powershell(cmd)
-            ps_commands.append(ps_cmd)
-            has_curl = True
-    
-    if not has_curl:
-        return ExecResult("powershell-emulation", "no-curl", 1, "", "脚本中没有找到 curl 命令")
-    
-    full_command = "\n".join(ps_commands)
-    
-    cmd = ["powershell", "-Command", full_command]
-    
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-        )
-        return ExecResult(
-            "powershell-emulation",
-            f"run: powershell -Command (emulated)",
-            proc.returncode,
-            proc.stdout or "",
-            proc.stderr or "",
-        )
-    except subprocess.TimeoutExpired:
-        return ExecResult("powershell-emulation", "timeout", 124, "", "执行超时 (120s)")
-    except OSError as exc:
-        return ExecResult("powershell-emulation", "error", 2, "", f"无法执行: {exc}")
-
-
-def _run_script(skill: Skill, script_path: Path, args: Optional[List[str]] = None) -> ExecResult:
-    """智能脚本执行器 - 支持跨平台脚本执行。
-    
-    Smart Shell Executor 特性：
-    1. 自动检测系统上的 shell 环境
-    2. 优先使用原生 bash（Linux/macOS）或 Git Bash/WSL（Windows）
-    3. 回退到 PowerShell 模拟执行简单脚本
-    4. 支持多种脚本格式：.sh, .py, .ps1, .bat, .cmd
-    """
-    if not script_path.is_file():
-        return ExecResult(skill.name, f"missing: {script_path}", 1, "", "脚本不存在")
-
-    if sys.platform.startswith("win"):
-        if script_path.suffix == ".ps1":
-            cmd = ["powershell", "-File", str(script_path), *(args or [])]
-        elif script_path.suffix == ".py":
-            cmd = [sys.executable, str(script_path), *(args or [])]
-        elif script_path.suffix == ".bat" or script_path.suffix == ".cmd":
-            cmd = [str(script_path), *(args or [])]
-        elif script_path.suffix == ".sh":
-            # Smart Shell: 优先尝试原生 bash
-            bash_path = _find_bash_on_windows()
-            if bash_path:
-                cmd = [bash_path, str(script_path), *(args or [])]
-            else:
-                # 回退到 PowerShell 模拟执行
-                logger.warning(f"未找到 bash，尝试使用 PowerShell 模拟执行: {script_path}")
-                return _run_with_powershell_emulation(script_path, args)
-        else:
-            cmd = [sys.executable, str(script_path), *(args or [])]
-    else:
-        if script_path.suffix == ".py":
-            cmd = [sys.executable, str(script_path), *(args or [])]
-        else:
-            cmd = [str(script_path), *(args or [])]
+        mtime = opus_path.stat().st_mtime
+        if _CACHED_OPUS is not None and _CACHED_OPUS[0] == opus_path and _CACHED_OPUS[1]["__mtime__"] == mtime:
+            cached_copy = dict(_CACHED_OPUS[1])
+            cached_copy.pop("__mtime__", None)
+            return cached_copy
+    except OSError:
+        pass
 
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=str(skill.path),
-            timeout=120,
-            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-        )
-        return ExecResult(
-            skill.name,
-            f"run: {shlex.join(str(c) for c in cmd)}",
-            proc.returncode,
-            proc.stdout or "",
-            proc.stderr or "",
-        )
-    except subprocess.TimeoutExpired:
-        return ExecResult(skill.name, "timeout", 124, "", "执行超时 (120s)")
-    except OSError as exc:
-        return ExecResult(skill.name, "error", 2, "", f"无法执行: {exc}")
+        raw = opus_path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    result: Dict[str, str] = {}
+    api_keys = data.get("api_keys") or {}
+    if not isinstance(api_keys, dict):
+        return {}
+
+    for category in ("skills", "llm", "other"):
+        items = api_keys.get(category) or {}
+        if not isinstance(items, dict):
+            continue
+        for name, info in items.items():
+            if not isinstance(info, dict):
+                continue
+            key = info.get("api_key")
+            if not key:
+                continue
+            env_name = str(name).upper().replace("-", "_").replace(" ", "_") + "_API_KEY"
+            result[env_name] = str(key)
+            # 兼容：search -> TAVILY_API_KEY （因为 search 技能内部用的是 TAVILY_API_KEY）
+            if name == "search" and "TAVILY_API_KEY" not in os.environ:
+                result["TAVILY_API_KEY"] = str(key)
+
+    _CACHED_OPUS = (opus_path, {"__mtime__": mtime, **result})
+    return result
+
+
+def _merged_env(extra: Optional[Dict[str, str]] = None,
+                cwd: Optional[Path] = None) -> Dict[str, str]:
+    """合并当前进程 env + Opus.json 里的 api key + 调用方额外注入。"""
+    merged: Dict[str, str] = dict(os.environ)
+    for k, v in _load_opus_keys(cwd).items():
+        merged.setdefault(k, v)
+    if extra:
+        for k, v in extra.items():
+            merged[k] = v
+    # Python 子进程编码
+    merged.setdefault("PYTHONIOENCODING", "utf-8")
+    return merged
 
 
 # ---------------------------------------------------------------------------
-# 对外 API
+# 脚本选择
+# ---------------------------------------------------------------------------
+
+def _pick_executable(skill: Skill) -> Optional[Path]:
+    """为技能选择一个主要脚本：优先同名 .py；否则按 .py > .sh > .ps1 > .bat 顺序。"""
+    if not skill.scripts:
+        return None
+    scripts_dir = skill.path / "scripts"
+    py_scripts = [s for s in skill.scripts if s.endswith(".py")]
+    sh_scripts = [s for s in skill.scripts if s.endswith(".sh")]
+    ps1_scripts = [s for s in skill.scripts if s.endswith(".ps1")]
+    bat_scripts = [s for s in skill.scripts if s.endswith(".bat") or s.endswith(".cmd")]
+
+    # 优先：同名
+    for bucket in (py_scripts, sh_scripts, ps1_scripts, bat_scripts):
+        for name in bucket:
+            stem = Path(name).stem
+            if stem == skill.name or stem.replace("_", "-") == skill.name or stem.replace("-", "_") == skill.name:
+                p = scripts_dir / name
+                if p.is_file():
+                    return p
+
+    # 再按扩展名优先级返回第一个存在的
+    for bucket in (py_scripts, sh_scripts, ps1_scripts, bat_scripts):
+        if bucket:
+            p = scripts_dir / bucket[0]
+            if p.is_file():
+                return p
+    return None
+
+
+# ---------------------------------------------------------------------------
+# 执行逻辑
+# ---------------------------------------------------------------------------
+
+def _run_python_script(skill: Skill, script: Path, args: Optional[List[str]] = None) -> ExecResult:
+    cmd: List[str] = [sys.executable, str(script)] + list(args or [])
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            cwd=str(skill.path),
+            timeout=180,
+            env=_merged_env(),
+        )
+        return ExecResult(skill.name,
+                           f"run: {os.path.basename(cmd[0])} {script.name}{' ...' if args else ''}",
+                           proc.returncode,
+                           proc.stdout or "",
+                           proc.stderr or "")
+    except subprocess.TimeoutExpired:
+        return ExecResult(skill.name, "timeout", 124, "", "执行超时 (180s)")
+    except OSError as exc:
+        return ExecResult(skill.name, "os-error", 2, "", f"无法执行: {exc}")
+
+
+def _run_shell_script(skill: Skill, script: Path, args: Optional[List[str]] = None) -> ExecResult:
+    """在类 Unix 系统上用 bash/sh 执行 .sh；在 Windows 上若有 Git Bash 也走 bash，否则回退到 PowerShell。"""
+    # Windows: 找 bash.exe（Git Bash / WSL）
+    if sys.platform.startswith("win"):
+        bash_candidates = [
+            shutil.which("bash.exe") or "",
+            shutil.which("bash") or "",
+            r"C:\Program Files\Git\bin\bash.exe",
+            r"C:\Program Files (x86)\Git\bin\bash.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Git\bin\bash.exe"),
+            r"C:\Windows\System32\bash.exe",
+        ]
+        for c in bash_candidates:
+            if c and os.path.exists(c):
+                cmd = [c, str(script)] + list(args or [])
+                try:
+                    proc = subprocess.run(
+                        cmd, capture_output=True, text=True,
+                        encoding='utf-8', errors='replace',
+                        cwd=str(skill.path), timeout=180,
+                        env=_merged_env(),
+                    )
+                    return ExecResult(skill.name, f"bash: {script.name}", proc.returncode,
+                                      proc.stdout or "", proc.stderr or "")
+                except (subprocess.TimeoutExpired, OSError) as exc:
+                    return ExecResult(skill.name, "bash-error", 2, "", str(exc))
+
+        # 无 bash：用 PowerShell
+        pwsh = shutil.which("pwsh") or shutil.which("powershell.exe") or r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        # PowerShell 执行 .sh 通常无意义，但可以尝试直接执行；这里提示用户装 bash
+        try:
+            escaped_args = " ".join(shlex.quote(a) for a in (args or []))
+            script_text = f"& '{script}' {escaped_args}"
+            proc = subprocess.run(
+                [pwsh, "-NoProfile", "-NonInteractive", "-Command", script_text],
+                capture_output=True, text=True,
+                encoding='utf-8', errors='replace',
+                cwd=str(skill.path), timeout=180,
+                env=_merged_env(),
+            )
+            return ExecResult(skill.name, f"powershell: {script.name}",
+                              proc.returncode, proc.stdout or "", proc.stderr or "")
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            return ExecResult(skill.name, "powershell-error", 2, "", str(exc))
+
+    # Linux / macOS：bash
+    shell = shutil.which("bash") or shutil.which("sh") or "/bin/sh"
+    cmd = [shell, str(script)] + list(args or [])
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True,
+            encoding='utf-8', errors='replace',
+            cwd=str(skill.path), timeout=180,
+            env=_merged_env(),
+        )
+        return ExecResult(skill.name, f"{os.path.basename(shell)}: {script.name}",
+                          proc.returncode, proc.stdout or "", proc.stderr or "")
+    except subprocess.TimeoutExpired:
+        return ExecResult(skill.name, "timeout", 124, "", "执行超时 (180s)")
+    except OSError as exc:
+        return ExecResult(skill.name, "shell-error", 2, "", f"无法执行: {exc}")
+
+
+def _run_ps1_script(skill: Skill, script: Path, args: Optional[List[str]] = None) -> ExecResult:
+    pwsh = shutil.which("pwsh") or shutil.which("powershell.exe") or r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+    try:
+        escaped_args = " ".join(shlex.quote(a) for a in (args or []))
+        proc = subprocess.run(
+            [pwsh, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+             "-File", str(script)] + list(args or []),
+            capture_output=True, text=True,
+            encoding='utf-8', errors='replace',
+            cwd=str(skill.path), timeout=180,
+            env=_merged_env(),
+        )
+        return ExecResult(skill.name, f"powershell: {script.name}",
+                          proc.returncode, proc.stdout or "", proc.stderr or "")
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return ExecResult(skill.name, "powershell-error", 2, "", str(exc))
+
+
+def _run_bat_script(skill: Skill, script: Path, args: Optional[List[str]] = None) -> ExecResult:
+    try:
+        cmd = ["cmd.exe", "/C", str(script)] + list(args or [])
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True,
+            encoding='utf-8', errors='replace',
+            cwd=str(skill.path), timeout=180,
+            env=_merged_env(),
+        )
+        return ExecResult(skill.name, f"cmd: {script.name}",
+                          proc.returncode, proc.stdout or "", proc.stderr or "")
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return ExecResult(skill.name, "cmd-error", 2, "", str(exc))
+
+
+def run_skill_script(skill: Skill, script_name: Optional[str] = None,
+                     args: Optional[List[str]] = None) -> ExecResult:
+    """执行技能脚本。"""
+    if not skill.scripts:
+        return ExecResult(skill.name, "no-scripts", 1, "", "该技能没有 scripts/ 目录")
+
+    if script_name:
+        script = skill.path / "scripts" / script_name
+        if not script.is_file():
+            return ExecResult(skill.name, "missing-script", 1, "", f"脚本不存在: {script}")
+    else:
+        picked = _pick_executable(skill)
+        if picked is None:
+            return ExecResult(skill.name, "no-script", 1, "", "无法定位脚本")
+        script = picked
+
+    ext = script.suffix.lower()
+    if ext == ".py":
+        return _run_python_script(skill, script, args)
+    if ext == ".sh":
+        return _run_shell_script(skill, script, args)
+    if ext == ".ps1":
+        return _run_ps1_script(skill, script, args)
+    if ext in (".bat", ".cmd"):
+        return _run_bat_script(skill, script, args)
+
+    # 未知扩展名：当成可执行文件直接跑
+    try:
+        cmd = [str(script)] + list(args or [])
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              encoding='utf-8', errors='replace',
+                              cwd=str(skill.path), timeout=180, env=_merged_env())
+        return ExecResult(skill.name, f"exec: {script.name}", proc.returncode,
+                          proc.stdout or "", proc.stderr or "")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return ExecResult(skill.name, "exec-error", 2, "", str(exc))
+
+
+# ---------------------------------------------------------------------------
+# 辅助：列出脚本、读取参考文件
 # ---------------------------------------------------------------------------
 
 def describe_skill(skill: Skill) -> str:
-    """返回一个技能的可执行资源描述。"""
-    lines = [
-        f"技能: {skill.name} ({skill.source})",
-        f"  路径: {skill.path}",
-        f"  描述: {skill.short_description}",
-    ]
+    lines = [f"技能: {skill.name} ({skill.source})",
+             f"  路径: {skill.path}",
+             f"  描述: {skill.short_description}"]
     if skill.scripts:
         lines.append(f"  脚本: {', '.join(skill.scripts)}")
     if skill.references:
         lines.append(f"  参考: {', '.join(skill.references)}")
     if skill.assets:
-        lines.append(f"  资源: {', '.join(skill.assets[:5])}")
-        if len(skill.assets) > 5:
-            lines[-1] += f" ... (+{len(skill.assets) - 5})"
+        lines.append(f"  资源: {', '.join(skill.assets[:5])}"
+                     + (f" ... (+{len(skill.assets) - 5})" if len(skill.assets) > 5 else ""))
     return "\n".join(lines)
 
 
-def run_skill_script(skill: Skill, script_name: Optional[str] = None,
-                     args: Optional[List[str]] = None) -> ExecResult:
-    """执行技能的某个脚本（需要显式指定，默认第一个）。"""
-    if not skill.scripts:
-        return ExecResult(skill.name, "no-script", 1, "", "该技能没有 scripts/ 目录")
-    if script_name:
-        path = skill.path / "scripts" / script_name
-    else:
-        path = _pick_executable(skill)
-        if path is None:
-            return ExecResult(skill.name, "no-script", 1, "", "无法定位脚本")
-    return _run_script(skill, path, args)
-
-
 def read_reference(skill: Skill, ref_name: str) -> Optional[str]:
-    """读取技能 references/ 中的一个文件内容。"""
     fp = skill.path / "references" / ref_name
     if not fp.is_file():
         return None
@@ -461,5 +368,4 @@ def read_reference(skill: Skill, ref_name: str) -> Optional[str]:
 
 
 def has_command(cmd: str) -> bool:
-    """检查系统中是否存在某条命令（用于判断技能的前置依赖）。"""
     return shutil.which(cmd) is not None

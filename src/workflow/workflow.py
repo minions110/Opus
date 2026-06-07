@@ -15,7 +15,7 @@ workflow.yaml 的顶层字段 (最小可用定义):
       - name: "result"
     steps:       # 必需
       - id: "step1"
-        action: "ask"               # 必需: ask | list | show | run | ref | reload | workflow | log | llm
+        action: "ask"               # 必需: ask | list | show | run | ref | reload | workflow | log
         query: "你的问题"           # ask 专用
         skill: "skill-name"         # show/run/ref 专用
         args: "..."                 # run 专用 (字符串)
@@ -23,12 +23,6 @@ workflow.yaml 的顶层字段 (最小可用定义):
         source: "openclaw"          # list 专用 (可选)
         workflow: "another-wf"      # 嵌套调用另一个工作流
         text: "任意文本"            # log 专用
-        # LLM 专用字段
-        prompt: "提示词"            # llm 专用: 生成文本的提示词
-        provider: "openai"          # llm 专用: LLM 提供商 (可选)
-        model: "gpt-4o"            # llm 专用: 模型名称 (可选)
-        max_tokens: 4096           # llm 专用: 最大生成长度 (可选)
-        temperature: 0.7           # llm 专用: 温度参数 (可选)
         depends_on: ["step1"]       # 可选: 依赖的步骤 id
         on_error: "continue"        # 可选: fail | continue
         if: "表达式"                # 可选: 基于 inputs 的条件 (支持 `{{inputs.x}} == "值"` 等)
@@ -101,20 +95,44 @@ class WorkflowResult:
 _VAR_RE = re.compile(r"\{\{\s*([\w\.]+)\s*\}\}")
 
 
+def _lookup(key: str, ctx: Dict[str, Any]) -> Optional[Any]:
+    parts = key.split(".")
+    cur: Any = ctx
+    for p in parts:
+        if isinstance(cur, dict) and p in cur:
+            cur = cur[p]
+        elif isinstance(cur, list) and p.isdigit():
+            idx = int(p)
+            cur = cur[idx] if 0 <= idx < len(cur) else None
+        else:
+            return None
+    return cur
+
+
+def _stringify(v: Any) -> str:
+    if isinstance(v, (dict, list)):
+        try:
+            import json as _json
+            return _json.dumps(v, ensure_ascii=False)
+        except Exception:  # noqa: BLE001
+            return str(v)
+    if v is None:
+        return ""
+    return str(v)
+
+
 def _render(value: Any, ctx: Dict[str, Any]) -> Any:
-    """递归地把结构中的 {{inputs.x}} 替换为 ctx 里的值。"""
+    """递归做模板替换：只替换字符串里的 {{x.y.z}}；list/dict 结构保留。
+
+    - 模板变量指向 dict/list 的场合会被序列化为 JSON 字符串再注入
+    - 其他类型做 str()
+    """
     if isinstance(value, str):
         def sub(m: re.Match) -> str:
-            key = m.group(1)
-            # 支持 inputs.xxx / steps.xxx.output 这种简单点语法
-            parts = key.split(".")
-            cur: Any = ctx
-            for p in parts:
-                if isinstance(cur, dict) and p in cur:
-                    cur = cur[p]
-                else:
-                    return m.group(0)  # 找不到，保持原样
-            return str(cur)
+            resolved = _lookup(m.group(1), ctx)
+            if resolved is None:
+                return m.group(0)
+            return _stringify(resolved)
         return _VAR_RE.sub(sub, value)
     if isinstance(value, list):
         return [_render(v, ctx) for v in value]
@@ -441,6 +459,92 @@ class WorkflowExecutor:
                               output={"name": skill.name, "description": skill.description,
                                       "summary": describe_skill(skill)})
 
+        if action == "chat":
+            """原生 LLM 对话（通过 Agent.llm_chat，直接走 Opus.json 里的 LLM provider）。
+
+            支持字段:
+              - messages: [{role, content}, ...]，其中 content 里可写 {{steps.<id>.output}} / {{inputs.<name>}}
+              - system:   可选，作为 system 消息注入到 messages 开头
+              - prompt:   可选，快捷方式 —— 仅传入一条 user 消息（等价于 messages=[{role:user, content:...}]）
+              - model:    可选，覆盖配置里的默认模型
+              - provider: 可选，指定 LLM 提供商（默认用 settings.default_llm）
+              - temperature / max_tokens: 可选
+              - json_mode: true | false（默认 false）—— 若为 true，则尝试把 assistant 文本解析为 JSON
+              - response_target: 可选，默认 "output"。把步骤输出的字段写到上下文（供后续步骤引用）
+            """
+            provider = rendered_raw.get("provider")
+            model = rendered_raw.get("model") or None
+            temperature = rendered_raw.get("temperature")
+            if isinstance(temperature, (int, float)):
+                temperature = float(temperature)
+            else:
+                temperature = None
+            max_tokens = rendered_raw.get("max_tokens")
+            if isinstance(max_tokens, (int, float)) and not isinstance(max_tokens, bool):
+                max_tokens = int(max_tokens)
+            else:
+                max_tokens = None
+
+            messages: List[Dict[str, str]] = []
+            system_text = rendered_raw.get("system") or rendered_raw.get("system_prompt")
+            if system_text:
+                messages.append({"role": "system", "content": str(system_text)})
+
+            user_msgs = rendered_raw.get("messages")
+            if isinstance(user_msgs, list) and user_msgs:
+                for m in user_msgs:
+                    if isinstance(m, dict) and "role" in m and "content" in m:
+                        messages.append({
+                            "role": str(m["role"]),
+                            "content": str(m["content"]),
+                        })
+            prompt_text = rendered_raw.get("prompt") or rendered_raw.get("text") or rendered_raw.get("content") or rendered_raw.get("query")
+            if not messages and prompt_text:
+                messages.append({"role": "user", "content": str(prompt_text)})
+
+            if not messages:
+                return StepResult(step.id, action, False,
+                                  error="chat 步骤缺少消息体（messages / prompt / text 至少有其一）")
+
+            kwargs: Dict[str, Any] = {}
+            if model is not None:
+                kwargs["model"] = model
+            if temperature is not None:
+                kwargs["temperature"] = temperature
+            if max_tokens is not None:
+                kwargs["max_tokens"] = max_tokens
+
+            response = self.agent.llm_chat(messages, provider=provider, **kwargs)
+
+            if not response.ok:
+                return StepResult(step.id, action, False,
+                                  error=response.error or "LLM 调用返回错误")
+
+            content = response.content or ""
+            output_obj: Any = content
+
+            json_mode = bool(rendered_raw.get("json_mode") or rendered_raw.get("parse_json"))
+            parsed_json: Any = None
+            if json_mode or content.lstrip().startswith("{") or content.lstrip().startswith("["):
+                try:
+                    import json as _json
+                    parsed_json = _json.loads(content.strip())
+                    output_obj = parsed_json
+                except Exception:  # noqa: BLE001
+                    parsed_json = None
+
+            return StepResult(step.id, action, True, output={
+                "content": content,
+                "json": parsed_json,
+                "model": response.model,
+                "usage": {
+                    "prompt_tokens": response.prompt_tokens,
+                    "completion_tokens": response.completion_tokens,
+                    "total_tokens": response.total_tokens,
+                },
+                "provider": provider or self.agent.llm_manager._default_provider if hasattr(self.agent, "llm_manager") else None,
+            })
+
         if action == "run":
             sname = rendered_raw.get("skill")
             if not sname:
@@ -448,14 +552,52 @@ class WorkflowExecutor:
             skill = self.agent.find_skill(sname)
             if skill is None:
                 return StepResult(step.id, action, False, error=f"未找到技能: {sname}")
-            args = rendered_raw.get("args")
+
+            script_name = rendered_raw.get("script") or None
+            raw_args = rendered_raw.get("args")
+
+            if raw_args is None:
+                # 兼容：不传 args 时，若提供了 'text'/'query'/'message'，当作单参数
+                fallback_text = (
+                    rendered_raw.get("text")
+                    or rendered_raw.get("query")
+                    or rendered_raw.get("message")
+                    or rendered_raw.get("content")
+                )
+                args_list: Optional[List[str]] = [fallback_text] if fallback_text else None
+            elif isinstance(raw_args, list):
+                args_list = [str(a) for a in raw_args]
+            elif isinstance(raw_args, str):
+                args_list = raw_args.split()
+            else:
+                args_list = [str(raw_args)]
+
             from ..agent.executor import run_skill_script
-            r = run_skill_script(skill, args=args.split() if isinstance(args, str) else None)
+            r = run_skill_script(skill, script_name=script_name, args=args_list)
+
+            # 若 stdout 看起来像 JSON，解析成结构化对象存到 output.json
+            parsed_json: Any = None
+            stdout_text = (r.stdout or "").strip()
+            if stdout_text and (stdout_text.startswith("{") or stdout_text.startswith("[")):
+                try:
+                    import json as _json
+                    parsed_json = _json.loads(stdout_text)
+                except Exception:  # noqa: BLE001
+                    parsed_json = None
+
+            output_obj: Dict[str, Any] = {
+                "returncode": r.returncode,
+                "stdout": r.stdout,
+                "stderr": r.stderr,
+                "action": r.action,
+                "skill": sname,
+            }
+            if parsed_json is not None:
+                output_obj["json"] = parsed_json
+
             return StepResult(step.id, action,
                               ok=r.returncode == 0,
-                              output={"returncode": r.returncode,
-                                      "stdout": r.stdout, "stderr": r.stderr,
-                                      "action": r.action})
+                              output=output_obj)
 
         if action == "ref":
             sname = rendered_raw.get("skill")
@@ -498,37 +640,6 @@ class WorkflowExecutor:
             logger.info("[workflow:%s] %s", step.id, text)
             return StepResult(step.id, action, True, output=str(text))
 
-        if action == "llm":
-            prompt = rendered_raw.get("prompt") or rendered_raw.get("text") or rendered_raw.get("query") or ""
-            if not prompt:
-                return StepResult(step.id, action, False, error="llm 步骤缺少 'prompt'")
-            
-            provider = rendered_raw.get("provider")
-            model = rendered_raw.get("model")
-            max_tokens = rendered_raw.get("max_tokens")
-            temperature = rendered_raw.get("temperature")
-            
-            kwargs = {}
-            if model:
-                kwargs["model"] = model
-            if max_tokens:
-                kwargs["max_tokens"] = int(max_tokens)
-            if temperature:
-                kwargs["temperature"] = float(temperature)
-            
-            try:
-                response = self.agent.llm_generate(prompt, provider=provider, **kwargs)
-                if response.ok:
-                    return StepResult(step.id, action, True, 
-                                      output={"content": response.content, 
-                                              "model": response.model,
-                                              "tokens": response.total_tokens})
-                else:
-                    return StepResult(step.id, action, False, error=response.error)
-            except Exception as e:
-                logger.error(f"LLM step error: {e}")
-                return StepResult(step.id, action, False, error=str(e))
-
         # 未知动作 —— 作为 on_error=continue 处理
         return StepResult(step.id, action, False,
-                          error=f"未知 action: {action} (支持: ask/list/show/run/ref/reload/workflow/log/llm)")
+                          error=f"未知 action: {action} (支持: ask/list/show/run/ref/reload/workflow/log)")

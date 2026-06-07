@@ -1,0 +1,7 @@
+{
+  "llm_provider": "deepseek",
+  "llm_model": "deepseek-chat",
+  "temperature": 0.5,
+  "title_dedup_threshold": 0.75,
+  "query_cooldown_days": 7
+}

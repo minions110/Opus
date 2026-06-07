@@ -1,0 +1,192 @@
+{
+  "version": 1,
+  "created": "2026-06-06T19:52:39",
+  "updated": "2026-06-07T22:42:02",
+  "history": [
+    {
+      "type": "article",
+      "query": "AI 大模型最新进展",
+      "title": "AI 大模型最新进展",
+      "summary": "WorkflowResult(name='search-toutiao', ok=True, steps=[StepResult(step_id='step1_fetch_news', action='run', ok=True, output={'returncode': 0, 'stdout': '{\"code\":200,\"log_id\":\"bfc7b3e114ad710c\",\"msg\":nu",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-01.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-01.md",
+      "timestamp": "2026-06-06T19:52:53"
+    },
+    {
+      "type": "article",
+      "query": "固态电池量产消息",
+      "title": "固态电池量产消息",
+      "summary": "WorkflowResult(name='search-toutiao', ok=True, steps=[StepResult(step_id='step1_fetch_news', action='run', ok=True, output={'returncode': 0, 'stdout': '{\"code\":200,\"log_id\":\"91b7b06a171a79db\",\"msg\":nu",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-02.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-02.md",
+      "timestamp": "2026-06-06T19:53:04"
+    },
+    {
+      "type": "article",
+      "query": "人形机器人融资动态",
+      "title": "人形机器人融资动态",
+      "summary": "WorkflowResult(name='search-toutiao', ok=True, steps=[StepResult(step_id='step1_fetch_news', action='run', ok=True, output={'returncode': 0, 'stdout': '{\"code\":200,\"log_id\":\"b49cae5d49db8294\",\"msg\":nu",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-03.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-03.md",
+      "timestamp": "2026-06-06T19:53:16"
+    },
+    {
+      "type": "article",
+      "query": "具身智能研发突破",
+      "title": "{",
+      "summary": "{   \"title\": \"全球首个通用具身智能平台发布\",   \"original_title\": \"革命性突破:具身智能技术重塑机器人未来_应用_企业_科技时代\",   \"original_snippet\": \"在当今快速发展的科技时代,具身智能正在成为人工智能领域中最引人瞩目的新兴概念。最近,北京人形机器人创新中心推出了全球首个“一脑多能”“一脑多机”的通用具身智能平台“慧思开物”,这一里程",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-04.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-04.md",
+      "timestamp": "2026-06-06T19:55:06"
+    },
+    {
+      "type": "article",
+      "query": "数据要素市场政策",
+      "title": "数据要素市场培育：政策分析新框架",
+      "summary": "在数字经济浪潮下，数据已成为关键生产要素。如何激活数据要素市场，让其价值在安全与效率间充分释放，成为政策制定者和市场参与者的共同课题。近日，一项基于利益相关者视角的数据要素市场培育政策分析框架研究引发关注，为理解这一复杂议题提供了全新视角。  这项研究跳出了单一维度的分析，构建了一个三维框架：利益相关者、数据基础制度、数据要素化阶段。简单来说，它让我们看清了谁在参与市场（企业、政府、个人等）、制度",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-05.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-05.md",
+      "timestamp": "2026-06-06T19:56:55"
+    },
+    {
+      "type": "article",
+      "query": "绿色数据中心",
+      "title": "绿色数据中心：节能环保新趋势",
+      "summary": "在数字化浪潮席卷全球的今天，数据中心已经成为支撑我们日常生活的“隐形巨人”。从刷短视频到在线办公，每一个数据的传输和存储，都离不开它的默默运作。然而，这些庞大的机房也是能源消耗的“大户”。据统计，全球数据中心的用电量已占全球总用电量的1%左右，且还在快速增长。于是，绿色数据中心应运而生，成为行业转型的关键方向。  什么是绿色数据中心？简单来说，它是通过优化设计和技术创新，在保证高可靠性、高可用性的",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-06.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-06.md",
+      "timestamp": "2026-06-06T19:57:09"
+    },
+    {
+      "type": "article",
+      "query": "芯片产业国产替代",
+      "title": "芯片国产替代龙头名单，收藏这篇就够了！",
+      "summary": "刚刚过去的2022年，全球半导体产业经历了从火热到冷静的调整期。但展望未来，半导体市场正蓄势待发，据WSTS预测，2023年市场规模有望突破6000亿美元，行业将迎来新一轮增长风口。在缺“芯”困局持续发酵的背景下，国产替代成为不可逆转的大趋势。国家政策大力扶持，国产芯片赛道厂商如雨后春笋般涌现，国产芯片自给率已从不足5%飙升至20%~30%，预计到2025年有望达到70%。这背后，一批龙头企业正在",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-07.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-07.md",
+      "timestamp": "2026-06-06T19:58:21"
+    },
+    {
+      "type": "article",
+      "query": "光伏行业技术迭代",
+      "title": "光伏技术加速迭代！N型组件市占率飙升至78%",
+      "summary": "光伏行业的“技术风暴”正在席卷而来，而新一代电池技术组件正成为这场变革的主角。根据集邦咨询最新数据显示，今年前两个月，N型组件招标量高达21.76GW，市占率突破78.3%！这组数据背后，是光伏行业技术迭代的急剧加速，N型TOPCon、HJT和BC等高效组件正在迅速抢占市场，而BC技术的崛起更是超出了所有人的预期。  ## 一、N型组件为何“跑”得这么快？  相比传统的P型组件（如PERC），N型",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-08.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-06\\run-08.md",
+      "timestamp": "2026-06-06T19:58:36"
+    },
+    {
+      "type": "article",
+      "query": "低空经济",
+      "title": "低空经济：改变你生活的新引擎",
+      "summary": "当无人机送外卖、飞行汽车通勤从科幻照进现实，一个全新的经济形态——低空经济，正悄然改写着我们的生活与产业逻辑。你或许还没注意到，头顶那片1000米以下的天空，如今已变得越来越“忙”。  低空经济，听起来高大上，其实它离我们很近。根据中投产业研究院的报告，全球低空经济的探索早在18世纪就已开始，但直到近年才迎来爆发。简单来说，它是以民用有人驾驶和无人驾驶航空器为载体的综合性经济形态，涵盖物流、农业、",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-07\\run-01.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-07\\run-01.md",
+      "timestamp": "2026-06-07T10:09:37"
+    },
+    {
+      "type": "article",
+      "query": "华为鸿蒙生态设备突破8亿台",
+      "title": "鸿蒙生态破8亿，升级用户激增2000万",
+      "summary": "华为鸿蒙生态再迎里程碑，设备数量已突破8亿台，展现出强大的增长势头。据华为终端官方消息，目前已有180款设备支持升级至HarmonyOS 4.2，覆盖手机、平板、手表和智慧屏等多品类，一个月内升级用户数超过2000万，速度令人瞩目。  这一数字的背后，是鸿蒙系统在多终端协同体验上的持续优化。HarmonyOS 4.2不仅提升了系统流畅度，还强化了跨设备互联能力，让用户在不同设备间无缝切换。比如，手",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-07\\run-02.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-07\\run-02.md",
+      "timestamp": "2026-06-07T10:09:47"
+    },
+    {
+      "type": "article",
+      "query": "具身智能最新进展",
+      "title": "具身智能最新进展",
+      "summary": "{\"error\": \"network: EOF occurred in violation of protocol (_ssl.c:1129)\"}",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-07\\run-03.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-07\\run-03.md",
+      "timestamp": "2026-06-07T10:35:51"
+    },
+    {
+      "type": "article",
+      "query": "Sora 视频生成模型技术细节与落地前景",
+      "title": "Sora 视频生成模型技术细节与落地前景",
+      "summary": "{\"error\": \"network: [Errno 2] No such file or directory\"}",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-07\\run-04.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao\\2026-06-07\\run-04.md",
+      "timestamp": "2026-06-07T10:35:55"
+    },
+    {
+      "type": "article",
+      "query": "AI 大模型",
+      "title": "AI大模型到底是个啥？三分钟带你入门",
+      "summary": "最近，“AI大模型”这个词频繁出现在各种新闻和朋友圈里，感觉谁不聊几句就跟不上时代了。但说实话，这玩意儿到底是个啥，很多人还是云里雾里的。别急，今天咱就用最接地气的方式，三分钟让你搞明白。  首先，咱们得知道什么是“模型”。你可以把它想象成一个特别会学习的超级大脑。你给它一个问题，比如“明天天气怎么样？”，它就能根据它学过的知识，给你一个答案。这个答案不一定是百分百准确，但基于它“喂养”的数据，它",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-01.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-01.md",
+      "timestamp": "2026-06-07T17:27:46"
+    },
+    {
+      "type": "article",
+      "query": "固态电池",
+      "title": "固态电池突破：续航千公里不再是梦",
+      "summary": "你是否曾为电动汽车的续航焦虑而烦恼？想象一下，充电一次，轻松跑上千公里，而且电池更安全、寿命更长。这并非科幻电影的情节，而是正在发生的事实。2024年4月8日，智己L6全球首发了量产的固态电池，彻底颠覆了我们对动力电池的认知。  固态电池，顾名思义，就是使用固体电极和固体电解质的电池。与传统锂离子电池中液态电解液和隔膜不同，固态电池的电解质是固态的，这带来了革命性的变化。首先，它更安全。液态电解质",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-02.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-02.md",
+      "timestamp": "2026-06-07T17:27:58"
+    },
+    {
+      "type": "article",
+      "query": "人形机器人",
+      "title": "人形机器人：未来已来，千亿市场爆发前夜",
+      "summary": "你准备好迎接一个由机器人陪伴的未来居家生活了吗？这不是科幻电影，而是正在发生的事实。人形机器人，这一集成了人工智能、高端制造和新材料等前沿技术的“新物种”，正从实验室加速走向我们的家庭和职场。  想象一下，一个能帮你做家务、照顾老人、甚至陪你聊天的机器人，不再是天方夜谭。如今，人形机器人的发展势头已成燎原之势，被业内视为继计算机、智能手机、新能源汽车之后的下一个颠覆性产品。它不仅将深刻改变我们的生",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-03.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-03.md",
+      "timestamp": "2026-06-07T20:05:06"
+    },
+    {
+      "type": "article",
+      "query": "人形机器人",
+      "title": "人形机器人即将爆发，你准备好了吗？",
+      "summary": "如果说计算机改变了信息时代，智能手机重塑了社交方式，新能源汽车革新了出行体验，那么下一个改变世界的会是什么？答案是：人形机器人。这个曾经只在科幻电影里出现的概念，如今正以前所未有的速度向我们走来。  人形机器人，顾名思义，就是模仿人类外观和行为的机器人。它们不仅能行走、跑步，还能完成复杂的操作任务，甚至具备一定的情感交互能力。这背后，是人工智能、高端制造、新材料等多领域技术的深度融合。你可以想象一",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-04.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-04.md",
+      "timestamp": "2026-06-07T21:33:31"
+    },
+    {
+      "type": "article",
+      "query": "固态电池量产",
+      "title": "固态电池量产加速，续航突破1000公里",
+      "summary": "在新能源车市场，续航和安全性一直是消费者最关心的两大痛点。近日，一则消息让行业沸腾：国内首条大容量全固态电池产线正式建成投产，能量密度较传统锂电池提升近一倍，这意味着原本只能跑500公里的车型，现在轻松突破1000公里大关。  根据证券时报的报道，这条产线计划在2026年进行小批量装车实验，2027年起逐步实现批量生产。固态电池之所以备受期待，是因为它彻底摒弃了液态电解液，电芯内部采用固态电解质，",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-05.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-05.md",
+      "timestamp": "2026-06-07T22:18:47"
+    },
+    {
+      "type": "article",
+      "query": "固态电池量产",
+      "title": "固态电池量产提速，续航破千不是梦",
+      "summary": "最近，新能源车圈又炸了！国内首条大容量全固态电池产线正式投产，这意味着一直被吐槽“续航焦虑”和“自燃担忧”的电动车，可能很快就要迎来彻底翻身的机会。  咱们先来划重点：这条新产线造出来的固态电池，能量密度比现在的锂电池高出一倍。什么意思？举个例子，现在一辆标称续航500公里的电动车，换上这款固态电池，直接就能跑1000公里以上。从北京开到上海，中途都不用找充电桩。  更让人安心的是安全性。传统锂电",
+      "path_json": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-06.json",
+      "path_md": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-06.md",
+      "timestamp": "2026-06-07T22:42:02"
+    }
+  ],
+  "kv": {},
+  "index": {
+    "titles": [
+      "AI 大模型最新进展",
+      "固态电池量产消息",
+      "人形机器人融资动态",
+      "{",
+      "数据要素市场培育：政策分析新框架",
+      "绿色数据中心：节能环保新趋势",
+      "芯片国产替代龙头名单，收藏这篇就够了！",
+      "光伏技术加速迭代！N型组件市占率飙升至78%",
+      "低空经济：改变你生活的新引擎",
+      "鸿蒙生态破8亿，升级用户激增2000万",
+      "具身智能最新进展",
+      "Sora 视频生成模型技术细节与落地前景",
+      "AI大模型到底是个啥？三分钟带你入门",
+      "固态电池突破：续航千公里不再是梦",
+      "人形机器人：未来已来，千亿市场爆发前夜",
+      "人形机器人即将爆发，你准备好了吗？",
+      "固态电池量产加速，续航突破1000公里",
+      "固态电池量产提速，续航破千不是梦"
+    ]
+  }
+}

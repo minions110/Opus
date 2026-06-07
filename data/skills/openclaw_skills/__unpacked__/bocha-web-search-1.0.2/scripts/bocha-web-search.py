@@ -1,95 +1,104 @@
 #!/usr/bin/env python3
 """Bocha Web Search API 调用脚本。
 
-使用 Bocha Web Search API 进行联网搜索。
-
-API 端点: POST https://api.bocha.cn/v1/web-search
-认证方式: Bearer <BOCHA_API_KEY>
+优先使用环境变量 BOCHA_API_KEY；
+若没有，则在当前工作目录 / 脚本所在目录向上查找 data/Opus.json 并读取 api_keys.bocha.api_key。
 """
+
+from __future__ import annotations
 
 import json
 import os
 import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Optional
 
 
-def main():
+def _load_from_opus_json() -> Optional[str]:
+    """从 Opus.json 中查找 bocha API key。"""
+    candidates = [Path.cwd() / "data" / "Opus.json",
+                  Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "Opus.json",
+                  Path(__file__).resolve().parent.parent / "data" / "Opus.json"]
+    for candidate in candidates:
+        try:
+            if candidate.is_file():
+                data = json.loads(candidate.read_text(encoding="utf-8"))
+                api_keys = data.get("api_keys", {}) or {}
+                skills = api_keys.get("skills", {}) or {}
+                bocha = skills.get("bocha") or {}
+                key = bocha.get("api_key")
+                if key:
+                    return str(key)
+        except (OSError, json.JSONDecodeError):
+            continue
+    return None
+
+
+def _print_and_exit(obj: dict, code: int) -> None:
+    print(json.dumps(obj, ensure_ascii=False))
+    sys.exit(code)
+
+
+def main() -> None:
     if len(sys.argv) < 2:
-        print_usage()
-        sys.exit(1)
-    
+        _print_and_exit({"error": "Missing JSON argument. 用法: bocha-web-search.py '{\"query\":\"...\"}'"}, 1)
+
     try:
         input_json = json.loads(sys.argv[1])
     except json.JSONDecodeError:
-        print(json.dumps({"error": "Invalid JSON input"}))
-        sys.exit(1)
-    
+        _print_and_exit({"error": "Invalid JSON input"}, 1)
+
+    if not isinstance(input_json, dict):
+        _print_and_exit({"error": "Input JSON must be an object"}, 1)
+
     query = input_json.get("query")
     if not query:
-        print(json.dumps({"error": "query field is required"}))
-        sys.exit(1)
-    
-    # 获取 API Key
-    api_key = os.environ.get("BOCHA_API_KEY")
+        _print_and_exit({"error": "query field is required"}, 1)
+
+    api_key = os.environ.get("BOCHA_API_KEY") or _load_from_opus_json()
     if not api_key:
-        print(json.dumps({"error": "BOCHA_API_KEY environment variable not set"}))
-        sys.exit(1)
-    
-    # 构建请求参数
-    params = {
+        _print_and_exit({
+            "error": "BOCHA_API_KEY environment variable / Opus.json#api_keys.skills.bocha.api_key not set"
+        }, 1)
+
+    body = {
         "query": query,
         "freshness": input_json.get("freshness", "noLimit"),
-        "summary": input_json.get("summary", True),
-        "count": input_json.get("count", 10)
+        "summary": bool(input_json.get("summary", True)),
+        "count": int(input_json.get("count", 10)),
     }
-    
-    # 发送请求
+
     try:
-        import urllib.request
-        import urllib.error
-        
-        url = "https://api.bocha.cn/v1/web-search"
-        data = json.dumps(params).encode("utf-8")
-        
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Content-Length": str(len(data))
-        }
-        
-        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-        
-        with urllib.request.urlopen(req, timeout=30) as response:
-            result = response.read().decode("utf-8")
-            print(result)
-            sys.exit(0)
-    
-    except urllib.error.HTTPError as e:
-        error_data = e.read().decode("utf-8")
-        print(json.dumps({"error": f"HTTP Error {e.code}", "details": error_data}))
-        sys.exit(1)
-    except urllib.error.URLError as e:
-        print(json.dumps({"error": f"Network Error: {str(e)}"}))
-        sys.exit(1)
-    except Exception as e:
-        print(json.dumps({"error": str(e)}))
-        sys.exit(1)
-
-
-def print_usage():
-    usage = """Usage: bocha-web-search.py '<json>'
-
-Required:
-  query: string - Search query
-
-Optional:
-  freshness: 'noLimit'(default), 'oneDay', 'oneWeek', 'oneMonth', 'oneYear'
-  summary: boolean - Whether to include web original content (default: true)
-  count: integer - Number of results (default: 10, max: 50)
-
-Example:
-  bocha-web-search.py '{"query": "AI news", "freshness": "oneWeek", "count": 5}'
-"""
-    print(usage)
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.bocha.cn/v1/web-search",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        # 正常输出：直接打印 JSON 响应
+        print(raw)
+        sys.exit(0)
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            detail = ""
+        _print_and_exit({"error": f"HTTP {exc.code}", "details": detail[:2000]}, 1)
+    except urllib.error.URLError as exc:
+        _print_and_exit({"error": f"network: {exc.reason}"}, 1)
+    except TimeoutError:
+        _print_and_exit({"error": "request timed out"}, 1)
+    except OSError as exc:
+        _print_and_exit({"error": f"OS error: {exc}"}, 1)
 
 
 if __name__ == "__main__":

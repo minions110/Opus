@@ -291,7 +291,7 @@ def run_workflow(name: str, inputs_json: Optional[str] = None,
     inputs: dict = {}
     if query:
         inputs["query"] = query
-        print(f"[简化模式] 使用 query: {query}")
+        print(f"[工作流模式] 使用 query: {query}")
 
     if inputs_json:
         s = inputs_json.strip()
@@ -408,6 +408,122 @@ def run_api_server(host: str = "127.0.0.1", port: int = 8765,
         return 0
 
 
+# ---------------------------------------------------------------------------
+# Agent 相关（子智能体调度）
+# ---------------------------------------------------------------------------
+
+def list_agents(config_path: Optional[str] = None) -> int:
+    """列出所有可用 Agent（含简要说明）。"""
+    from src.agent.agent import Agent
+    from src.agent.registry import registry
+
+    cfg = str(config_path or (PROJECT_ROOT / "config.yaml"))
+    base_agent = Agent(cfg)
+
+    print("\n=== 可用 Agent ===")
+    print(registry.describe_all(base_agent))
+    return 0
+
+
+def _print_agent_result(result) -> None:
+    """agent 任务结果的统一打印。"""
+    if not isinstance(result, dict):
+        print(f"\n[结果] {result}")
+        return
+    requested = result.get("requested")
+    if requested is not None:
+        print(f"\n=== Agent 任务完成 ===")
+        print(f"请求: {requested} 篇，成功: {result.get('success')}，失败: {result.get('failure')}")
+        for i, art in enumerate(result.get("articles", []), 1):
+            title = art.get("title") or art.get("query") or "(无标题)"
+            path_md = art.get("path_md", "")
+            path_json = art.get("path_json", "")
+            print(f"\n  [{i}] {title}")
+            if path_md:
+                print(f"       Markdown: {path_md}")
+            if path_json:
+                print(f"       JSON:     {path_json}")
+    elif result.get("task") == "suggest_topics":
+        print(f"\n[话题建议] 共 {result.get('n')} 个：")
+        for i, t in enumerate(result.get("topics", []), 1):
+            print(f"  {i:2d}. {t}")
+    else:
+        print(f"\n[结果] {json.dumps(result, ensure_ascii=False, indent=2)}")
+
+
+def run_agent_cmd(agent_name: str, *,
+                  n: int = 10,
+                  suggest: int = 0,
+                  topics: Optional[str] = None,
+                  query: Optional[str] = None,
+                  task: Optional[str] = None,
+                  config_path: Optional[str] = None) -> int:
+    """直接跑指定 Agent。"""
+    import logging as _logging
+    _logging.basicConfig(level=_logging.INFO,
+                         format="[%(asctime)s] %(levelname)s %(name)s: %(message)s")
+
+    from src.agent.agent import Agent
+    from src.agent.registry import registry
+
+    cfg = str(config_path or (PROJECT_ROOT / "config.yaml"))
+    base_agent = Agent(cfg)
+    name = agent_name.lower().strip()
+
+    sub = registry.get(name, base_agent)
+    print(f"调用 Agent: {name}")
+
+    # 话题池（逗号分隔字符串 -> list）
+    topic_pool = None
+    if topics:
+        topic_pool = [t.strip() for t in topics.split(",") if t.strip()]
+
+    # 先优先处理 workflow/skill 直达（用户明确说跑一个 workflow）
+    if task and task.lower() in ("workflow", "wf") and query:
+        wf_result = sub.workflow(query, {"query": query, "count": 10})
+        try:
+            text = json.dumps(wf_result, ensure_ascii=False, indent=2)
+        except Exception:
+            text = str(wf_result)
+        print(f"\n[工作流结果] {text[:2000]}")
+        return 0
+
+    # 否则走 Agent 自己的 run()
+    if suggest and suggest > 0:
+        result = sub.run(task="suggest_topics", n=suggest)
+    elif task:
+        result = sub.run(task=task, n=n, topic_pool=topic_pool, query=query)
+    elif name == "toutiao":
+        result = sub.run(task="daily_batch", n=n, topic_pool=topic_pool)
+    else:
+        result = sub.run(n=n, topic_pool=topic_pool, query=query)
+
+    _print_agent_result(result)
+    return 0
+
+
+def run_instruction(instruction: str,
+                    config_path: Optional[str] = None) -> int:
+    """给主调度器发一条自然语言指令，让它自动选 Agent。"""
+    from src.agent.agent import Agent
+    from src.agent.registry import registry
+
+    cfg = str(config_path or (PROJECT_ROOT / "config.yaml"))
+    base_agent = Agent(cfg)
+
+    orch = registry.get("main", base_agent)
+    print(f"总调度器收到指令: {instruction}")
+
+    result = orch.run(instruction=instruction)
+    if isinstance(result, dict) and result.get("task") == "route" and result.get("ok"):
+        inner = result.get("result") or {}
+        if result.get("dispatched_to") == "toutiao":
+            _print_agent_result(inner)
+            return 0
+    _print_agent_result(result)
+    return 0
+
+
 def run_full_cli(extra: Optional[List[str]] = None) -> int:
     """调用部署用的完整 CLI。"""
     cli_path = PROJECT_ROOT / "application" / "cli" / "main.py"
@@ -432,8 +548,8 @@ def show_info() -> int:
     print("  application/cli/main.py     # 部署 CLI")
     print("  application/api/api_server.py # 部署 API")
     print("  src/agent/           # 智能体核心")
-    print("  src/skill_scripts/   # 技能加载与匹配")
-    print("  src/workflow_scripts/ # 工作流引擎")
+    print("  src/skill/   # 技能加载与匹配")
+    print("  src/workflow/ # 工作流引擎")
     print("  data/skills/         # 技能包（支持 .zip）")
     print("  data/workflows/      # 工作流定义")
     print()
@@ -494,6 +610,22 @@ def build_parser() -> argparse.ArgumentParser:
     wf_group.add_argument("--inputs", metavar="JSON",
                           help="配合 --workflow: JSON 输入参数")
 
+    agent_group = parser.add_argument_group("智能体 (Agent)")
+    agent_group.add_argument("--agents", action="store_true",
+                             help="列出所有可用 Agent")
+    agent_group.add_argument("--agent", metavar="NAME",
+                             help="直接执行指定 Agent（如 toutiao）")
+    agent_group.add_argument("--run", metavar="INSTRUCTION",
+                             help="给主调度器发一条自然语言指令，自动选择合适的 Agent")
+    agent_group.add_argument("--task", metavar="TASK",
+                             help="配合 --agent: 指定任务名 (daily_batch/single_article/suggest_topics/workflow)")
+    agent_group.add_argument("--n", type=int, default=10,
+                             help="配合 --agent: 生成多少篇/条 (默认 10)")
+    agent_group.add_argument("--suggest", type=int, default=0,
+                             help="配合 --agent: 只建议 n 个话题，不实际跑")
+    agent_group.add_argument("--topics", type=str,
+                             help="配合 --agent: 用逗号分隔的自定义话题列表")
+
     mode = parser.add_argument_group("启动模式")
     mode.add_argument("-i", "--interactive", action="store_true",
                       help="交互式对话模式（默认）")
@@ -524,10 +656,28 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    config_path = str(PROJECT_ROOT / "config.yaml")
 
-    # 按优先级分发
+    # 按优先级分发（Agent 组优先）
     if args.info:
         return show_info()
+
+    if args.agents:
+        return list_agents(config_path)
+
+    if args.agent:
+        return run_agent_cmd(
+            args.agent,
+            n=args.n,
+            suggest=args.suggest if args.suggest else 0,
+            topics=args.topics,
+            query=(getattr(args, 'query', None) or getattr(args, 'wf_query', None)),
+            task=args.task,
+            config_path=config_path,
+        )
+
+    if args.run:
+        return run_instruction(args.run, config_path)
 
     if args.api:
         return run_api_server(args.host, args.port, args.verbose)

@@ -1,0 +1,83 @@
+[2026-06-07 09:53:39] INFO src.workflow.workflow: 发现工作流: demo (G:\agent\Opus\data\workflows\demo\workflow.yaml)
+[2026-06-07 09:53:39] INFO src.workflow.workflow: 发现工作流: search-toutiao (G:\agent\Opus\data\workflows\search-toutiao\workflow.yaml)
+[2026-06-07 09:53:39] INFO src.workflow.workflow: 发现工作流: test (G:\agent\Opus\data\workflows\test\workflow.yaml)
+[2026-06-07 09:53:39] INFO src.workflow.workflow: 发现工作流: test1 (G:\agent\Opus\data\workflows\test1\workflow.yaml)
+[2026-06-07 09:53:39] INFO src.agents.base: [toutiao] 初始化完成，数据目录: G:\agent\Opus\data\agents\toutiao
+[2026-06-07 09:53:39] INFO run_agent: 调用 Agent: toutiao
+[2026-06-07 09:53:39] INFO src.agents.toutiao_agent.agent: [toutiao] run(task=suggest_topics, n=3)
+[2026-06-07 09:53:48] INFO src.llm.adapters.openai: [deepseek] 使用 openai 库作为后端
+[2026-06-07 09:53:48] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 09:53:51] INFO src.agents.toutiao_agent.agent: [toutiao] 选出 3 个话题 / 候选 30 个
+[2026-06-07 10:08:33] INFO src.workflow.workflow: 发现工作流: demo (G:\agent\Opus\data\workflows\demo\workflow.yaml)
+[2026-06-07 10:08:33] INFO src.workflow.workflow: 发现工作流: search-toutiao (G:\agent\Opus\data\workflows\search-toutiao\workflow.yaml)
+[2026-06-07 10:08:33] INFO src.workflow.workflow: 发现工作流: test (G:\agent\Opus\data\workflows\test\workflow.yaml)
+[2026-06-07 10:08:33] INFO src.workflow.workflow: 发现工作流: test1 (G:\agent\Opus\data\workflows\test1\workflow.yaml)
+[2026-06-07 10:08:33] INFO src.agents.base: [toutiao] 初始化完成，数据目录: G:\agent\Opus\src\agent\toutiao
+[2026-06-07 10:08:33] INFO run_agent: 调用 Agent: toutiao
+[2026-06-07 10:08:33] INFO src.agents.toutiao_agent.agent: [toutiao] run(task=suggest_topics, n=3)
+[2026-06-07 10:08:35] INFO src.llm.adapters.openai: [deepseek] 使用 openai 库作为后端
+[2026-06-07 10:08:35] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:08:38] INFO src.agents.toutiao_agent.agent: [toutiao] 选出 3 个话题 / 候选 30 个
+[2026-06-07 10:09:01] INFO src.workflow.workflow: 发现工作流: demo (G:\agent\Opus\data\workflows\demo\workflow.yaml)
+[2026-06-07 10:09:01] INFO src.workflow.workflow: 发现工作流: search-toutiao (G:\agent\Opus\data\workflows\search-toutiao\workflow.yaml)
+[2026-06-07 10:09:01] INFO src.workflow.workflow: 发现工作流: test (G:\agent\Opus\data\workflows\test\workflow.yaml)
+[2026-06-07 10:09:01] INFO src.workflow.workflow: 发现工作流: test1 (G:\agent\Opus\data\workflows\test1\workflow.yaml)
+[2026-06-07 10:09:01] INFO src.agents.base: [toutiao] 初始化完成，数据目录: G:\agent\Opus\src\agent\toutiao
+[2026-06-07 10:09:01] INFO run_agent: 调用 Agent: toutiao
+[2026-06-07 10:09:01] INFO src.agents.toutiao_agent.agent: [toutiao] run(task=daily_batch, n=2)
+[2026-06-07 10:09:02] INFO src.llm.adapters.openai: [deepseek] 使用 openai 库作为后端
+[2026-06-07 10:09:03] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:04] INFO src.agents.toutiao_agent.agent: [toutiao] 选出 2 个话题 / 候选 2 个
+[2026-06-07 10:09:04] INFO src.agents.toutiao_agent.agent: [toutiao] 第 1/2 篇: query=低空经济
+[2026-06-07 10:09:04] INFO src.agents.toutiao_agent.agent: [toutiao] #1 → run workflow 'search-toutiao' with query=低空经济
+[2026-06-07 10:09:07] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:09] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:09] INFO openai._base_client: Retrying request to /chat/completions in 0.438943 seconds
+[2026-06-07 10:09:10] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:12] INFO openai._base_client: Retrying request to /chat/completions in 0.792606 seconds
+[2026-06-07 10:09:14] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:16] WARNING src.llm.adapters.openai: [deepseek] chat 调用失败 (1/3): Connection error.
+[2026-06-07 10:09:18] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:20] INFO openai._base_client: Retrying request to /chat/completions in 0.385694 seconds
+[2026-06-07 10:09:21] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:24] INFO openai._base_client: Retrying request to /chat/completions in 0.964309 seconds
+[2026-06-07 10:09:25] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:28] WARNING src.llm.adapters.openai: [deepseek] chat 调用失败 (2/3): Connection error.
+[2026-06-07 10:09:30] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:37] INFO src.agents.toutiao_agent.agent: [toutiao] 第 2/2 篇: query=华为鸿蒙生态设备突破8亿台
+[2026-06-07 10:09:37] INFO src.agents.toutiao_agent.agent: [toutiao] #2 → run workflow 'search-toutiao' with query=华为鸿蒙生态设备突破8亿台
+[2026-06-07 10:09:39] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:41] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:09:47] INFO src.agents.toutiao_agent.agent: [toutiao] 报告已保存: G:\agent\Opus\outputs\toutiao\2026-06-07\daily-report.md
+[2026-06-07 10:35:09] INFO src.workflow.workflow: 发现工作流: demo (G:\agent\Opus\data\workflows\demo\workflow.yaml)
+[2026-06-07 10:35:09] INFO src.workflow.workflow: 发现工作流: search-toutiao (G:\agent\Opus\data\workflows\search-toutiao\workflow.yaml)
+[2026-06-07 10:35:09] INFO src.workflow.workflow: 发现工作流: test (G:\agent\Opus\data\workflows\test\workflow.yaml)
+[2026-06-07 10:35:09] INFO src.workflow.workflow: 发现工作流: test1 (G:\agent\Opus\data\workflows\test1\workflow.yaml)
+[2026-06-07 10:35:10] INFO src.agent.base: [toutiao] 初始化完成，数据目录: G:\agent\Opus\src\agent\toutiao
+[2026-06-07 10:35:10] INFO run_agent: 调用 Agent: toutiao
+[2026-06-07 10:35:10] INFO src.agent.toutiao_agent.agent: [toutiao] run(task=suggest_topics, n=3)
+[2026-06-07 10:35:11] INFO src.llm.adapters.openai: [deepseek] 使用 openai 库作为后端
+[2026-06-07 10:35:14] INFO openai._base_client: Retrying request to /chat/completions in 0.484877 seconds
+[2026-06-07 10:35:17] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:35:17] INFO openai._base_client: Retrying request to /chat/completions in 0.907177 seconds
+[2026-06-07 10:35:21] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:35:22] INFO src.agent.toutiao_agent.agent: [toutiao] 选出 3 个话题 / 候选 30 个
+[2026-06-07 10:35:35] INFO src.workflow.workflow: 发现工作流: demo (G:\agent\Opus\data\workflows\demo\workflow.yaml)
+[2026-06-07 10:35:35] INFO src.workflow.workflow: 发现工作流: search-toutiao (G:\agent\Opus\data\workflows\search-toutiao\workflow.yaml)
+[2026-06-07 10:35:35] INFO src.workflow.workflow: 发现工作流: test (G:\agent\Opus\data\workflows\test\workflow.yaml)
+[2026-06-07 10:35:35] INFO src.workflow.workflow: 发现工作流: test1 (G:\agent\Opus\data\workflows\test1\workflow.yaml)
+[2026-06-07 10:35:35] INFO src.agent.base: [toutiao] 初始化完成，数据目录: G:\agent\Opus\src\agent\toutiao
+[2026-06-07 10:35:35] INFO run_agent: 调用 Agent: toutiao
+[2026-06-07 10:35:35] INFO src.agent.toutiao_agent.agent: [toutiao] run(task=daily_batch, n=2)
+[2026-06-07 10:35:36] INFO src.llm.adapters.openai: [deepseek] 使用 openai 库作为后端
+[2026-06-07 10:35:39] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:35:39] INFO openai._base_client: Retrying request to /chat/completions in 0.444177 seconds
+[2026-06-07 10:35:42] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:35:43] INFO openai._base_client: Retrying request to /chat/completions in 0.890714 seconds
+[2026-06-07 10:35:47] INFO httpx: HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2026-06-07 10:35:48] INFO src.agent.toutiao_agent.agent: [toutiao] 选出 2 个话题 / 候选 2 个
+[2026-06-07 10:35:48] INFO src.agent.toutiao_agent.agent: [toutiao] 第 1/2 篇: query=具身智能最新进展
+[2026-06-07 10:35:48] INFO src.agent.toutiao_agent.agent: [toutiao] #1 → run workflow 'search-toutiao' with query=具身智能最新进展
+[2026-06-07 10:35:51] INFO src.agent.toutiao_agent.agent: [toutiao] 第 2/2 篇: query=Sora 视频生成模型技术细节与落地前景
+[2026-06-07 10:35:51] INFO src.agent.toutiao_agent.agent: [toutiao] #2 → run workflow 'search-toutiao' with query=Sora 视频生成模型技术细节与落地前景
+[2026-06-07 10:35:55] INFO src.agent.toutiao_agent.agent: [toutiao] 报告已保存: G:\agent\Opus\outputs\toutiao\2026-06-07\daily-report.md
