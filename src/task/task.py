@@ -442,10 +442,21 @@ class TaskExecutor:
         logger.info(
             f"[{self.base.name}] #{index} → run workflow '{workflow_name}' with query={query}"
         )
+
+        # 先做 query 级别去重（完全相同的 query 近3天内跑过就跳过）
+        cooldown_days = self.base.config.get("query_cooldown_days", 3)
+        if self.base.is_query_recently_used(query, days=cooldown_days):
+            logger.warning(f"[{self.base.name}] #{index} query 近{cooldown_days}天内已使用: {query}，跳过")
+            return {"ok": False, "query": query, "reason": "query_recent"}
+
         wf_result = self.base.workflow(workflow_name, {"query": query, "count": 10})
 
-        title = self.extract_title(wf_result) or query
+        title = self.extract_title(wf_result) or ""
         content = self.extract_content(wf_result) or ""
+
+        # 如果 title 与 query 完全相同，可能是 LLM 没生成好标题 → 在 query 基础上加前缀作为标题
+        if not title or title.strip() == query:
+            title = f"{query}（{datetime.now().strftime('%m月%d日')}）"
 
         if not content or len(content) < min_content_length:
             logger.warning(f"[{self.base.name}] #{index} 内容过短或为空，跳过")
@@ -543,23 +554,28 @@ class TaskExecutor:
 
     def _handler_daily_batch(self, task: Dict[str, Any], inputs: Dict[str, Any]) -> Dict[str, Any]:
         """LLM 生成话题 + 循环跑 workflow 批量生成文章。"""
-        n = int(inputs.get("n", 10) or 10)
         workflow_name = task.get("workflow_name") or inputs.get("workflow_name") or "search-toutiao"
 
         raw_topics = inputs.get("topics") or ""
+        n_raw = int(inputs.get("n", 10) or 10)
+
         if raw_topics:
             topics = [t.strip() for t in str(raw_topics).split(",") if t.strip()]
+            # 用户明确给了 topics，用实际话题数量
+            n = min(n_raw, len(topics))
             topics = topics[:n]
         else:
-            topics = self.pick_topics(n)
+            topics = self.pick_topics(n_raw)
+            n = len(topics)
 
         if not topics:
             return {
                 "ok": False,
                 "task": task.get("name"),
-                "requested": n,
+                "requested": 0,
                 "success": 0,
                 "failure": 0,
+                "skipped": 0,
                 "articles": [],
                 "error": "没有可用话题（LLM 生成失败且 topic_pool 为空）",
             }
@@ -567,6 +583,7 @@ class TaskExecutor:
         summaries: List[Dict[str, Any]] = []
         successes = 0
         failures = 0
+        skipped = 0
         logger.info(f"[{self.base.name}] [daily_batch] 话题列表: {topics}")
 
         for i, query in enumerate(topics, 1):
@@ -577,7 +594,12 @@ class TaskExecutor:
                     summaries.append(result)
                     successes += 1
                 else:
-                    failures += 1
+                    # 区分"被跳过"与"真正失败"
+                    if result and result.get("reason"):
+                        logger.info(f"  跳过: {result['reason']}")
+                        skipped += 1
+                    else:
+                        failures += 1
             except Exception as e:
                 logger.warning(f"[{self.base.name}] [daily_batch] 第 {i} 篇失败: {e}")
                 failures += 1
@@ -604,12 +626,12 @@ class TaskExecutor:
             "requested": n,
             "success": successes,
             "failure": failures,
+            "skipped": skipped,
             "articles": summaries,
         }
 
     def _handler_batch_articles(self, task: Dict[str, Any], inputs: Dict[str, Any]) -> Dict[str, Any]:
         """从 --topics 或 knowledge.topic_pool 取话题，批量跑 workflow（不做 LLM 话题生成）。"""
-        n = int(inputs.get("n", 10) or 10)
         workflow_name = task.get("workflow_name") or inputs.get("workflow_name") or "search-toutiao"
         topics = self._resolve_topics(task, inputs)
 
@@ -617,16 +639,21 @@ class TaskExecutor:
             return {
                 "ok": False,
                 "task": task.get("name"),
-                "requested": n,
+                "requested": 0,
                 "success": 0,
                 "failure": 0,
                 "articles": [],
                 "error": "没有可用话题（既没给 --topics，knowledge/topic_pool.txt 也为空）",
             }
 
+        # 当用户明确提供 --topics 时，用实际话题数量作为 requested，而不是 n 默认值
+        n = int(inputs.get("n", len(topics)) or len(topics))
+        n = min(n, len(topics))
+
         summaries: List[Dict[str, Any]] = []
         successes = 0
         failures = 0
+        skipped = 0
         logger.info(f"[{self.base.name}] [batch_articles] 话题列表: {topics}")
 
         for i, query in enumerate(topics, 1):
@@ -637,7 +664,12 @@ class TaskExecutor:
                     summaries.append(result)
                     successes += 1
                 else:
-                    failures += 1
+                    # 区分"被跳过"（如重复标题）与"真正失败"
+                    if result and result.get("reason"):
+                        logger.info(f"  跳过: {result['reason']}")
+                        skipped += 1
+                    else:
+                        failures += 1
             except Exception as e:
                 logger.warning(f"[{self.base.name}] [batch_articles] 第 {i} 篇失败: {e}")
                 failures += 1
@@ -664,5 +696,6 @@ class TaskExecutor:
             "requested": n,
             "success": successes,
             "failure": failures,
+            "skipped": skipped,
             "articles": summaries,
         }

@@ -1,0 +1,37 @@
+{
+  "query": "生成式视频",
+  "title": "生成式视频（06月10日）",
+  "content": "📰 工作流执行完成！\n\n选中新闻：{{steps.step2_pick_best.output.json.title}}\n关键词：{{steps.step2_pick_best.output.json.keywords}}\n\n📝 文章预览（前200字）：\n{{steps.step3_write_article.output.content[:200]}}...",
+  "workflow_result": {
+    "name": "search-toutiao",
+    "ok": true,
+    "steps": [
+      {
+        "step_id": "step1_fetch_news",
+        "action": "run",
+        "ok": true,
+        "output_preview": "{'returncode': 0, 'stdout': '{\"code\":200,\"log_id\":\"3cb6878f3a7ce9c9\",\"msg\":null,\"data\":{\"_type\":\"SearchResponse\",\"queryContext\":{\"originalQuery\":\"生成式视频\"},\"webPages\":{\"webSearchUrl\":\"https://bochaai.com/search?q=生成式视频\",\"totalEstimatedMatches\":10000000,\"value\":[{\"id\":\"https://api.bochaai.com/v1/#WebPa"
+      },
+      {
+        "step_id": "step2_pick_best",
+        "action": "chat",
+        "ok": true,
+        "output_preview": "{'content': '您似乎忘记附上具体的新闻内容了。请将需要选择的新闻列表发送给我，我将为您分析并选出最适合图文推广的一条，按照要求的 JSON 格式输出。', 'json': None, 'model': 'deepseek-v4-flash', 'usage': {'prompt_tokens': 101, 'completion_tokens': 120, 'total_tokens': 221}, 'provider': 'deepseek'}"
+      },
+      {
+        "step_id": "step3_write_article",
+        "action": "chat",
+        "ok": true,
+        "output_preview": "{'content': '好的，请提供具体的新闻素材内容（如标题、事件摘要或数据），我将立即为您撰写一篇符合微信公众号风格的推广文章，包含吸引人的标题、清晰段落、生动语言和互动引导。', 'json': None, 'model': 'deepseek-v4-flash', 'usage': {'prompt_tokens': 81, 'completion_tokens': 227, 'total_tokens': 308}, 'provider': 'deepseek'}"
+      },
+      {
+        "step_id": "step4_final_output",
+        "action": "log",
+        "ok": true,
+        "output_preview": "📰 工作流执行完成！\n\n选中新闻：{{steps.step2_pick_best.output.json.title}}\n关键词：{{steps.step2_pick_best.output.json.keywords}}\n\n📝 文章预览（前200字）：\n{{steps.step3_write_article.output.content[:200]}}...\n"
+      }
+    ]
+  },
+  "generated_at": "2026-06-10T14:34:24",
+  "agent": "toutiao_agent"
+}

@@ -1,0 +1,22 @@
+# =====================================================================
+# batch_articles —— 从 --topics / topic_pool 批量生产
+# =====================================================================
+name: batch_articles
+handler: batch_articles
+description: |
+  从 --topics 或 knowledge/topic_pool.txt 取话题，批量跑 workflow。
+  不做 LLM 话题生成 —— 适合已有明确话题列表的场景。
+workflow_name: search-toutiao
+inputs:
+  - name: n
+    type: number
+    description: 生成多少篇文章
+    default: 10
+  - name: topics
+    type: string
+    description: 可选，逗号分隔的自定义话题列表
+    default: ""
+  - name: workflow_name
+    type: string
+    description: （可选）指定使用哪个工作流；默认使用 search-toutiao
+    default: search-toutiao

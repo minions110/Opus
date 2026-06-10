@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created": "2026-06-06T19:52:39",
-  "updated": "2026-06-07T22:42:02",
+  "updated": "2026-06-10T14:34:24",
   "history": [
     {
       "type": "article",
@@ -164,6 +164,51 @@
       "path_json": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-06.json",
       "path_md": "G:\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-07\\run-06.md",
       "timestamp": "2026-06-07T22:42:02"
+    },
+    {
+      "type": "article",
+      "query": "AI",
+      "title": "中国队打破美国队在男子4×100米混合泳41年垄断，夺金",
+      "summary": "📰 工作流执行完成！  选中新闻：中国队打破美国队在男子4×100米混合泳41年垄断，夺金 关键词：[\"中国队\", \"男子混合泳接力\", \"打破垄断\", \"金牌\", \"历史突破\"]  📝 文章预览（前200字）： {{steps.step3_write_article.output.content[:200]}}...",
+      "path_json": "G:\\code\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-08\\run-01.json",
+      "path_md": "G:\\code\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-08\\run-01.md",
+      "timestamp": "2026-06-08T16:46:49"
+    },
+    {
+      "type": "article",
+      "query": "机器人",
+      "title": "机器人",
+      "summary": "{\"error\": \"network: _ssl.c:1000: The handshake operation timed out\"}",
+      "path_json": "G:\\code\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-08\\run-02.json",
+      "path_md": "G:\\code\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-08\\run-02.md",
+      "timestamp": "2026-06-08T16:47:20"
+    },
+    {
+      "type": "article",
+      "query": "AI",
+      "title": "AI",
+      "summary": "{\"error\": \"network: [WinError 10060] 由于连接方在一段时间后没有正确答复或连接的主机没有反应，连接尝试失败。\"}",
+      "path_json": "G:\\code\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-10\\run-01.json",
+      "path_md": "G:\\code\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-10\\run-01.md",
+      "timestamp": "2026-06-10T13:35:53"
+    },
+    {
+      "type": "article",
+      "query": "脑机接口",
+      "title": "脑机接口（06月10日）",
+      "summary": "📰 工作流执行完成！  选中新闻：{{steps.step2_pick_best.output.json.title}} 关键词：{{steps.step2_pick_best.output.json.keywords}}  📝 文章预览（前200字）： {{steps.step3_write_article.output.content[:200]}}...",
+      "path_json": "G:\\code\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-10\\run-02.json",
+      "path_md": "G:\\code\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-10\\run-02.md",
+      "timestamp": "2026-06-10T14:33:43"
+    },
+    {
+      "type": "article",
+      "query": "生成式视频",
+      "title": "生成式视频（06月10日）",
+      "summary": "📰 工作流执行完成！  选中新闻：{{steps.step2_pick_best.output.json.title}} 关键词：{{steps.step2_pick_best.output.json.keywords}}  📝 文章预览（前200字）： {{steps.step3_write_article.output.content[:200]}}...",
+      "path_json": "G:\\code\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-10\\run-03.json",
+      "path_md": "G:\\code\\agent\\Opus\\outputs\\toutiao_agent\\2026-06-10\\run-03.md",
+      "timestamp": "2026-06-10T14:34:24"
     }
   ],
   "kv": {},
@@ -186,7 +231,12 @@
       "人形机器人：未来已来，千亿市场爆发前夜",
       "人形机器人即将爆发，你准备好了吗？",
       "固态电池量产加速，续航突破1000公里",
-      "固态电池量产提速，续航破千不是梦"
+      "固态电池量产提速，续航破千不是梦",
+      "中国队打破美国队在男子4×100米混合泳41年垄断，夺金",
+      "机器人",
+      "AI",
+      "脑机接口（06月10日）",
+      "生成式视频（06月10日）"
     ]
   }
 }

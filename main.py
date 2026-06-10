@@ -432,8 +432,12 @@ def _print_agent_result(result) -> None:
         return
     requested = result.get("requested")
     if requested is not None:
+        skipped = result.get("skipped", 0) or 0
         print(f"\n=== Agent 任务完成 ===")
-        print(f"请求: {requested} 篇，成功: {result.get('success')}，失败: {result.get('failure')}")
+        line = f"请求: {requested} 篇，成功: {result.get('success')}，失败: {result.get('failure')}"
+        if skipped > 0:
+            line += f"，跳过: {skipped}"
+        print(line)
         for i, art in enumerate(result.get("articles", []), 1):
             title = art.get("title") or art.get("query") or "(无标题)"
             path_md = art.get("path_md", "")

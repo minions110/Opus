@@ -1,0 +1,17 @@
+# =====================================================================
+# single_article —— 给定 query 跑一篇文章
+# =====================================================================
+name: single_article
+handler: single_article
+description: |
+  给定一个 query，跑一次 workflow，产出一篇文章（JSON + Markdown）。
+workflow_name: search-toutiao
+inputs:
+  - name: query
+    type: string
+    description: 文章主题/关键词（传给 workflow 的 query 参数）
+    default: ""
+  - name: workflow_name
+    type: string
+    description: （可选）指定使用哪个工作流；默认使用 search-toutiao
+    default: search-toutiao

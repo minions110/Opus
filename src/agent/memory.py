@@ -96,9 +96,23 @@ class Memory:
         """
         检查 new_title 是否与历史记录里最近 recent_n 条的 title 相似度 >= threshold。
         返回 True 表示"疑似重复"。
+
+        对短标题（≤ 5 个字符）使用更高的匹配阈值，避免"机器人"误判"人形机器人"。
         """
         if not new_title:
             return False
+
+        # 短标题：提高阈值，避免简单词被包含在长标题中就误判为重复
+        title_len = len(new_title.strip())
+        if title_len <= 3:
+            # 3 字以内：必须完全一致才算重复
+            use_threshold = 1.0
+        elif title_len <= 5:
+            # 4-5 字：使用更高的相似度阈值
+            use_threshold = max(threshold, 0.9)
+        else:
+            use_threshold = threshold
+
         # 取最近的若干条记录的 title 比较，避免全量扫描
         recent_titles = []
         for rec in self.data["history"][-recent_n:]:
@@ -109,10 +123,17 @@ class Memory:
         for t in self.data["index"]["titles"][-recent_n:]:
             if t not in recent_titles:
                 recent_titles.append(t)
-        
+
         for existing in recent_titles:
+            # 完全一致：直接命中
+            if new_title == existing:
+                return True
+            # 短标题：使用 stricter 匹配（不是简单的 substring 包含，而是严格等长+相同）
+            if title_len <= 3:
+                continue
+            # 正常比较
             sim = SequenceMatcher(None, new_title, existing).ratio()
-            if sim >= threshold:
+            if sim >= use_threshold:
                 return True
         return False
     

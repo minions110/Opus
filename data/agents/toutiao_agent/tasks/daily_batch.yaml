@@ -1,0 +1,22 @@
+# =====================================================================
+# daily_batch —— LLM 生成话题 + 批量生产
+# =====================================================================
+name: daily_batch
+handler: daily_batch
+description: |
+  每日例行的批量生成。先由 LLM 生成 n 个不重复话题，再依次跑 workflow。
+  有 --topics 就直接用它，不走 LLM 话题生成。
+workflow_name: search-toutiao
+inputs:
+  - name: n
+    type: number
+    description: 期望生成的话题/文章数量
+    default: 10
+  - name: topics
+    type: string
+    description: （可选）逗号分隔的话题列表；给了就跳过 LLM 生成步骤
+    default: ""
+  - name: workflow_name
+    type: string
+    description: （可选）指定使用哪个工作流；默认使用 search-toutiao
+    default: search-toutiao

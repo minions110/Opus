@@ -1,0 +1,18 @@
+# =====================================================================
+# suggest_topics —— 只生成话题，不跑 workflow
+# =====================================================================
+name: suggest_topics
+handler: suggest_topics
+description: |
+  只生成话题列表，不跑 workflow。用于预览、调试、或批量收集 idea。
+  有 --topics 就直接返回它；否则调 LLM 生成 n 个。
+workflow_name: search-toutiao
+inputs:
+  - name: n
+    type: number
+    description: 期望生成的话题数量
+    default: 10
+  - name: topics
+    type: string
+    description: （可选）逗号分隔的话题列表；给了就直接返回，不走 LLM
+    default: ""

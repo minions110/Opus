@@ -1,0 +1,19 @@
+{
+  "query": "AI",
+  "title": "AI",
+  "content": "{\"error\": \"network: [WinError 10060] 由于连接方在一段时间后没有正确答复或连接的主机没有反应，连接尝试失败。\"}",
+  "workflow_result": {
+    "name": "search-toutiao",
+    "ok": false,
+    "steps": [
+      {
+        "step_id": "step1_fetch_news",
+        "action": "run",
+        "ok": false,
+        "output_preview": "{'returncode': 1, 'stdout': '{\"error\": \"network: [WinError 10060] 由于连接方在一段时间后没有正确答复或连接的主机没有反应，连接尝试失败。\"}\\n', 'stderr': '', 'action': 'run: python.exe bocha-web-search.py ...', 'skill': 'bocha-web-search', 'json': {'error': 'network: [WinError 10060] 由于连接方在一段时间后没有正确答复或连接的主机没有反应，连接尝试失败。'}}"
+      }
+    ]
+  },
+  "generated_at": "2026-06-10T13:35:53",
+  "agent": "toutiao_agent"
+}

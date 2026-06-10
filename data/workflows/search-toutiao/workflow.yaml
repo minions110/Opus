@@ -1,84 +1,83 @@
 name: "search-toutiao"
-description: |
-  抓取今日头条/博查搜索到的新闻，再由 DeepSeek 选一条做图文推广改写。
-  步骤:
-    1. 通过 Bocha Web Search API 抓取与关键词相关的新闻（走 skill: bocha-web-search）。
-    2. 用 DeepSeek 从抓取结果中挑选最适合做图文推广的一条。
-    3. 用 DeepSeek 基于选定的新闻生成一篇图文推广文案。
+description: "搜索今日头条新闻并生成图文推广文章"
 
 inputs:
   - name: query
     type: string
     default: "今日头条 最新科技新闻"
-    description: 传给 Bocha 的搜索关键词
+    description: "搜索关键词"
+  
   - name: count
     type: integer
     default: 10
-    description: 一次搜索返回的条数
+    description: "搜索结果数量"
+  
   - name: llm_provider
     type: string
     default: "deepseek"
-    description: 步骤 2/3 使用的 LLM 提供商（必须在 Opus.json 里配置过）
+    description: "LLM 提供商"
+  
   - name: llm_model
     type: string
-    default: "deepseek-chat"
-    description: 模型名称，可选，留空则用默认模型
+    default: "deepseek-v4-flash"
+    description: "LLM 模型名称"
 
 steps:
   - id: step1_fetch_news
     action: run
     skill: bocha-web-search
-    args:
-      - '{"query":"{{inputs.query}}","count":{{inputs.count}},"freshness":"noLimit","summary":true}'
+    args: ['{"query":"{{inputs.query}}","count":{{inputs.count}}}']
+    description: "使用博查搜索获取新闻列表"
 
   - id: step2_pick_best
     action: chat
     provider: "{{inputs.llm_provider}}"
     model: "{{inputs.llm_model}}"
-    temperature: 0.2
-    max_tokens: 1200
-    json_mode: true
     system: |
-      你是一位资深新媒体编辑，擅长从新闻列表中选出最适合做图文推广的一条。
-      你的输出必须是严格合法的 JSON，只包含以下字段：
-        {
-          "title": "为选中的新闻拟一个不超过 30 字的中文标题",
-          "original_title": "原新闻标题",
-          "original_snippet": "从新闻中提取 80~200 字的正文摘要",
-          "reason": "不超过 80 字，简述为什么这条新闻最适合做图文推广",
-          "source": "原新闻的来源或 URL（若无则为空字符串）"
-        }
-      不允许输出任何额外文字、解释、Markdown 代码块；若原新闻里没有 title/snippet 字段，就自己根据原新闻内容合理生成。
-    messages:
-      - role: user
-        content: |
-          以下是搜索返回的新闻列表（可能是 JSON 也可能是混合文本），请从中挑出最适合做图文推广的一条，并按要求输出 JSON。
-
-          ---begin---
-          {{steps.step1_fetch_news.output.stdout}}
-          ---end---
+      你是一位资深新媒体编辑。
+      请从以下新闻中选出最适合做图文推广的一条新闻。
+      要求：
+      1. 选择具有话题性和传播力的新闻
+      2. 内容积极正面，适合社交媒体传播
+      3. 请以 JSON 格式输出，包含以下字段：
+         - title: 新闻标题
+         - summary: 新闻摘要（100字以内）
+         - reason: 选择理由
+         - keywords: 关键词数组（3-5个）
+    user: |
+      以下是搜索返回的新闻列表：
+      {{steps.step1_fetch_news.output.stdout}}
+    json_mode: true
+    description: "选择最适合推广的新闻"
 
   - id: step3_write_article
     action: chat
     provider: "{{inputs.llm_provider}}"
     model: "{{inputs.llm_model}}"
-    temperature: 0.9
-    max_tokens: 2400
-    json_mode: true
     system: |
-      你是一位优秀的新媒体公众号作者，擅长把新闻改写为高点击率的图文推广文案。
-      你的输出必须是严格合法的 JSON，只包含以下字段：
-        {
-          "title": "不超过 30 字的标题",
-          "content": "约 800 字的公众号正文，分段清晰，适当补充背景信息或延伸案例，避免直接复制原文句子，要求原创表达",
-          "highlights": ["要点1（不超过 40 字）", "要点2", "要点3"],
-          "tags": ["标签1", "标签2", "标签3"]
-        }
-      不允许输出任何额外文字或 Markdown 代码块。
-    messages:
-      - role: user
-        content: |
-          基于以下新闻改写为一篇图文推广公众号文章，并按要求返回 JSON。
+      你是一位专业的微信公众号作者。
+      请基于以下新闻素材撰写一篇适合在微信公众号发布的图文推广文章。
+      要求：
+      1. 标题要吸引人，符合微信公众号风格
+      2. 内容结构清晰，分段落展示
+      3. 语言生动有趣，适合大众阅读
+      4. 结尾可以加入引导互动的内容
+      5. 文章长度约500-800字
+    user: |
+      新闻标题：{{steps.step2_pick_best.output.json.title}}
+      新闻摘要：{{steps.step2_pick_best.output.json.summary}}
+      选择理由：{{steps.step2_pick_best.output.json.reason}}
+      关键词：{{steps.step2_pick_best.output.json.keywords}}
+    description: "撰写图文推广文章"
 
-          --- 上一步选出的新闻 ---
-          {{steps.step2_pick_best.output.content}}
+  - id: step4_final_output
+    action: log
+    text: |
+      📰 工作流执行完成！
+      
+      选中新闻：{{steps.step2_pick_best.output.json.title}}
+      关键词：{{steps.step2_pick_best.output.json.keywords}}
+      
+      📝 文章预览（前200字）：
+      {{steps.step3_write_article.output.content[:200]}}...
+    description: "输出最终结果"
